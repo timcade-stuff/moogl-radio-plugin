@@ -24,6 +24,9 @@ public sealed class NowPlayingClient : IDisposable
 
     public NowPlaying? Latest { get; private set; }
 
+    /// <summary>Message from the most recent failed poll, or null if the last poll succeeded.</summary>
+    public string? LastError { get; private set; }
+
     public event Action<NowPlaying>? Updated;
 
     public void Start(string apiBaseUrl)
@@ -51,12 +54,16 @@ public sealed class NowPlayingClient : IDisposable
                 if (result is not null)
                 {
                     Latest = result;
+                    LastError = null;
                     Updated?.Invoke(result);
                 }
             }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // Best-effort metadata; playback doesn't depend on this succeeding.
+                LastError = ex is HttpRequestException httpEx
+                    ? $"HTTP {(int?)httpEx.StatusCode}"
+                    : ex.Message;
             }
         } while (!token.IsCancellationRequested && await timer.WaitForNextTickAsync(token));
     }

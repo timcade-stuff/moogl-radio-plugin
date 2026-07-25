@@ -8,9 +8,9 @@ public sealed class Configuration : IPluginConfiguration
 
     public float Volume { get; set; } = 0.5f;
 
-    public string ApiBaseUrl { get; set; } = "https://radio.moogl.ing";
+    public string ApiBaseUrl { get; set; } = "https://moogl.fm";
 
-    public string StreamUrl { get; set; } = "https://radio.moogl.ing/listen/mooglradio.mp3";
+    public string StreamUrl { get; set; } = "https://moogl.fm/listen/mooglradio.mp3";
 
     /// <summary>Pins the window in place (disables dragging).</summary>
     public bool Locked { get; set; }

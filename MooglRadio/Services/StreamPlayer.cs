@@ -28,6 +28,9 @@ public sealed class StreamPlayer : IDisposable
 
     public bool IsPlaying { get; private set; }
 
+    /// <summary>Message from the most recent playback failure, or null if playback is fine.</summary>
+    public string? LastError { get; private set; }
+
     public event Action<Exception>? Error;
 
     public float Volume
@@ -48,6 +51,7 @@ public sealed class StreamPlayer : IDisposable
         Stop();
         cts = new CancellationTokenSource();
         IsPlaying = true;
+        LastError = null;
         _ = Task.Run(() => RunAsync(streamUrl, cts.Token));
     }
 
@@ -128,6 +132,9 @@ public sealed class StreamPlayer : IDisposable
         catch (Exception ex)
         {
             IsPlaying = false;
+            LastError = ex is HttpRequestException httpEx
+                ? $"HTTP {(int?)httpEx.StatusCode} fetching stream"
+                : ex.Message;
             Error?.Invoke(ex);
         }
     }

@@ -15,7 +15,7 @@ namespace MooglRadio.Windows;
 /// </summary>
 public sealed class MainWindow : Window
 {
-    private static readonly Vector2 WindowSize = new(300, 110);
+    private static readonly Vector2 WindowSize = new(300, 128);
 
     private readonly Plugin plugin;
 
@@ -55,7 +55,7 @@ public sealed class MainWindow : Window
         var config = plugin.Configuration;
         var nowPlaying = plugin.NowPlayingClient.Latest;
 
-        if (ImGui.Button(plugin.StreamPlayer.IsPlaying ? "⏸" : "▶", new Vector2(28, 28)))
+        if (ImGui.Button(plugin.StreamPlayer.IsPlaying ? "Pause" : "Play", new Vector2(52, 28)))
         {
             if (plugin.StreamPlayer.IsPlaying)
             {
@@ -73,18 +73,32 @@ public sealed class MainWindow : Window
             ? $"Live: {nowPlaying.Dj.Name}"
             : nowPlaying?.Block ?? "MOOGLradio");
 
-        ImGui.TextWrapped(nowPlaying?.Track is not null
-            ? $"{nowPlaying.Track.Artist} — {nowPlaying.Track.Title}"
-            : "Loading now-playing info...");
+        if (nowPlaying?.Track is not null)
+        {
+            ImGui.TextWrapped($"{nowPlaying.Track.Artist} — {nowPlaying.Track.Title}");
+        }
+        else if (plugin.NowPlayingClient.LastError is { } metaError)
+        {
+            ImGui.TextColored(new Vector4(1f, 0.5f, 0.5f, 1f), $"Can't reach MOOGLradio ({metaError})");
+        }
+        else
+        {
+            ImGui.TextWrapped("Loading now-playing info...");
+        }
         ImGui.EndGroup();
 
-        ImGui.SameLine(WindowSize.X - 62);
-        if (ImGui.Button("⚙", new Vector2(24, 24)))
+        ImGui.SameLine(WindowSize.X - 50);
+        if (ImGui.Button("...", new Vector2(24, 24)))
         {
             ImGui.OpenPopup("MooglRadioSettings");
         }
 
         DrawSettingsPopup(config);
+
+        if (plugin.StreamPlayer.LastError is { } playError)
+        {
+            ImGui.TextColored(new Vector4(1f, 0.5f, 0.5f, 1f), $"Playback error: {playError}");
+        }
 
         ImGui.Spacing();
 
