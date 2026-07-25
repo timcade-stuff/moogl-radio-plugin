@@ -1,4 +1,3 @@
-using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using NLayer.NAudioSupport;
 
@@ -19,14 +18,21 @@ namespace MooglRadio.Services;
 /// stream is also wrapped in <see cref="PositionTrackingStream"/> — see
 /// its doc comment for why (also confirmed in-game).
 ///
-/// Output goes through WasapiOut rather than WaveOutEvent: WaveOutEvent
-/// (winmm-based) accepted Init()/Play() without error under Wine but
-/// produced no audible output at all, even after the float->PCM16 fix
-/// above — confirmed in-game. WASAPI is the modern audio API most
-/// Windows games (including FFXIV itself) actually target, so Wine's
-/// Mac compatibility layer is a much safer bet to have implemented
-/// properly. <see cref="Diagnostic"/> logs key playback checkpoints in
-/// case this still produces no sound — see its doc comment.
+/// Output uses WaveOutEvent (not WasapiOut, despite an earlier attempt):
+/// CrystalRadio, a real published Dalamud radio plugin
+/// (github.com/Saevath/CrystalRadio), uses plain WaveOutEvent
+/// successfully, which is real-world evidence it works under Wine —
+/// undercutting the WASAPI theory from that attempt. CrystalRadio also
+/// uses MediaFoundationReader instead of manual MP3 frame parsing, but
+/// that's a native Windows COM API with inconsistent Wine/Proton support
+/// (see e.g. github.com/HoodedDeath/mf-fix) — deliberately not adopted
+/// here, since it would reintroduce the exact kind of platform-specific
+/// risk NLayer's pure-C# decoding was chosen to avoid.
+///
+/// <see cref="Diagnostic"/> logs key playback checkpoints, including
+/// periodic buffering progress — added because "no error, no sound" has
+/// happened twice now with nothing to distinguish "stalled after frame 1"
+/// from "just hasn't buffered 2 seconds yet."
 /// </summary>
 public sealed class StreamPlayer : IDisposable
 {
@@ -34,7 +40,7 @@ public sealed class StreamPlayer : IDisposable
 
     private readonly HttpClient httpClient = new();
     private CancellationTokenSource? cts;
-    private WasapiOut? waveOut;
+    private WaveOutEvent? waveOut;
     private WaveFloatTo16Provider? outputProvider;
     private float volume = 0.5f;
 
@@ -66,10 +72,6 @@ public sealed class StreamPlayer : IDisposable
         set
         {
             volume = Math.Clamp(value, 0f, 1f);
-            // Deliberately not waveOut.Volume: WasapiOut.Volume writes to the
-            // *system's* master output volume (mmDevice.AudioEndpointVolume),
-            // not a per-stream level. Scaling samples in the float->16 provider
-            // instead keeps this to "this stream's" volume, like the slider implies.
             if (outputProvider is not null)
             {
                 outputProvider.Volume = volume;
@@ -121,6 +123,7 @@ public sealed class StreamPlayer : IDisposable
             var buffer = new byte[ReadBufferSize];
             IMp3FrameDecompressor? decompressor = null;
             BufferedWaveProvider? bufferedWaveProvider = null;
+            var frameCount = 0;
 
             while (!token.IsCancellationRequested)
             {
@@ -139,8 +142,17 @@ public sealed class StreamPlayer : IDisposable
                 }
                 catch (EndOfStreamException)
                 {
+                    Diagnostic?.Invoke($"Stream ended after {frameCount} frames");
                     break;
                 }
+
+                if (frame is null)
+                {
+                    Diagnostic?.Invoke($"LoadFromStream returned null after {frameCount} frames (end of stream)");
+                    break;
+                }
+
+                frameCount++;
 
                 if (decompressor is null)
                 {
@@ -157,6 +169,12 @@ public sealed class StreamPlayer : IDisposable
                     Diagnostic?.Invoke(
                         $"First frame decoded: {frame.SampleRate}Hz, {waveFormat.Channels}ch, {frame.BitRate}bps");
                 }
+                else if (frameCount % 20 == 0)
+                {
+                    Diagnostic?.Invoke(
+                        $"Frame {frameCount}: buffered {bufferedWaveProvider!.BufferedDuration.TotalSeconds:F2}s, " +
+                        $"output {(waveOut is null ? "not started" : $"started (PlaybackState={waveOut.PlaybackState})")}");
+                }
 
                 var decompressed = decompressor.DecompressFrame(frame, buffer, 0);
                 bufferedWaveProvider!.AddSamples(buffer, 0, decompressed);
@@ -166,10 +184,10 @@ public sealed class StreamPlayer : IDisposable
                     // NLayer's decoder outputs 32-bit IEEE float; convert to 16-bit PCM
                     // before handing off to the output device.
                     outputProvider = new WaveFloatTo16Provider(bufferedWaveProvider) { Volume = volume };
-                    waveOut = new WasapiOut(AudioClientShareMode.Shared, 200);
+                    waveOut = new WaveOutEvent();
                     waveOut.Init(outputProvider);
                     waveOut.Play();
-                    Diagnostic?.Invoke($"WASAPI output initialized, PlaybackState={waveOut.PlaybackState}");
+                    Diagnostic?.Invoke($"Output initialized at frame {frameCount}, PlaybackState={waveOut.PlaybackState}");
                 }
             }
 

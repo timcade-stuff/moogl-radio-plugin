@@ -52,8 +52,8 @@ Things to double-check when you pick this up for real:
    with no error shown — this is why the plugin wasn't appearing
    in-game). Re-check this value whenever Dalamud ships a new API level
    and the plugin needs a corresponding release.
-3. **MP3 decoding/playback under Wine** — ~~fixed 2026-07-25~~. Four
-   separate issues in a row here, all confirmed in-game: (a)
+3. **MP3 decoding/playback under Wine** — still being chased as of
+   2026-07-25, several issues fixed in a row, all confirmed in-game: (a)
    `AcmMp3FrameDecompressor` calling into the (Wine-less) Windows ACM
    codec, fixed by swapping to `NLayer.NAudioSupport.Mp3FrameDecompressor`
    (pure C# decode); (b) NAudio's `Mp3Frame.LoadFromStream` unconditionally
@@ -64,16 +64,20 @@ Things to double-check when you pick this up for real:
    on that format without erroring while producing no audible output at
    all — fixed by converting to 16-bit PCM via NAudio's
    `WaveFloatTo16Provider`; (d) even after that conversion, `WaveOutEvent`
-   itself still produced no sound under Wine (no exception either) —
-   swapped for `WasapiOut`, since WASAPI is the modern API most Windows
-   games (FFXIV included) actually target, a safer bet for Wine's Mac
-   compatibility layer to have implemented. Also note: `WasapiOut.Volume`
-   controls the *system's* master output volume, not a per-stream
-   level — the volume slider deliberately scales samples via
-   `WaveFloatTo16Provider.Volume` instead, never touching `waveOut.Volume`.
-   `StreamPlayer.Diagnostic` logs key checkpoints (format detected, output
-   initialized + PlaybackState) via `IPluginLog.Info` in case WASAPI still
-   doesn't produce sound — check `/xllog` for "MOOGLradio:" lines.
+   still produced no sound (no exception either) — tried swapping to
+   `WasapiOut`, **reverted**: research into
+   [CrystalRadio](https://github.com/Saevath/CrystalRadio), a real
+   published Dalamud radio plugin, found it uses plain `WaveOutEvent`
+   successfully, real-world evidence against the WASAPI theory. (CrystalRadio
+   also uses `MediaFoundationReader` instead of manual MP3 parsing — not
+   adopted here, since Wine/Proton's Media Foundation support is
+   inconsistent (see e.g. `mf-fix` projects), which would reintroduce the
+   platform risk NLayer's pure-C# decode was specifically chosen to avoid.)
+   `StreamPlayer.Diagnostic` now logs periodic per-frame buffering progress
+   (not just start/end checkpoints) via `IPluginLog.Info` — check `/xllog`
+   for "MOOGLradio:" lines; if output still never initializes, the log
+   should now show exactly how far frame-by-frame decoding gets before
+   stalling, which the previous two attempts had no visibility into.
 4. **`DalamudPackager` target** — enabled and confirmed working via CI
    (produces `MooglRadio.zip`), but only compile-verified, not run
    in-game.
