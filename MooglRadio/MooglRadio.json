@@ -8,5 +8,5 @@
   "RepoUrl": "https://github.com/timcade-stuff/moogl-radio-plugin",
   "ApplicableVersion": "any",
   "Tags": ["radio", "music", "audio"],
-  "DalamudApiLevel": 13
+  "DalamudApiLevel": 15
 }

@@ -43,9 +43,12 @@ Things to double-check when you pick this up for real:
    Dalamud's default ImGui font — swap for text labels if they show as
    tofu boxes.
 2. **`DalamudApiLevel` in `MooglRadio/MooglRadio.json` / `repo.json`** —
-   currently set to `13` as a placeholder; check Dalamud's current API
-   level (visible in-game under Dalamud Settings → About, or in the
-   Dalamud repo) and correct it.
+   was a placeholder `13`; updated to `15` on 2026-07-25 after checking
+   the live PluginMaster feed (Dalamud silently hides plugins whose
+   declared API level doesn't match current from the installer list,
+   with no error shown — this is why the plugin wasn't appearing
+   in-game). Re-check this value whenever Dalamud ships a new API level
+   and the plugin needs a corresponding release.
 3. **MP3 decoding under Wine** — `Services/StreamPlayer.cs` uses
    NAudio's `AcmMp3FrameDecompressor`, which relies on the Windows ACM
    codec. FFXIV runs under Wine on Mac/Linux (confirmed via the

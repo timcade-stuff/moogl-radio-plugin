@@ -9,9 +9,12 @@ name: Release
 # GitHub Release with a working download URL) — see v0.1.0. Note
 # DalamudPackager names its output latest.zip (not <AssemblyName>.zip),
 # nested under bin/Release/MooglRadio/ — the locate step below renames it.
-# Not independently verified: whether DalamudApiLevel 13 in repo.json is
-# actually current, or whether the plugin loads/runs correctly in-game —
-# CI only proves it compiles against Dalamud's latest published assemblies.
+# DalamudApiLevel in repo.json was corrected 13 -> 15 (checked against the
+# live PluginMaster feed) — a stale API level is why the plugin wasn't
+# showing up in the in-game installer despite the repo/release being
+# reachable. Still not independently verified: whether the plugin
+# loads/runs correctly in-game — CI only proves it compiles against
+# Dalamud's latest published assemblies.
 
 on:
   push:

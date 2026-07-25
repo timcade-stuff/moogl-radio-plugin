@@ -9,7 +9,7 @@
     "RepoUrl": "https://github.com/timcade-stuff/moogl-radio-plugin",
     "ApplicableVersion": "any",
     "Tags": ["radio", "music", "audio"],
-    "DalamudApiLevel": 13,
+    "DalamudApiLevel": 15,
     "DownloadLinkInstall": "https://github.com/timcade-stuff/moogl-radio-plugin/releases/latest/download/MooglRadio.zip",
     "DownloadLinkUpdate": "https://github.com/timcade-stuff/moogl-radio-plugin/releases/latest/download/MooglRadio.zip",
     "DownloadLinkTesting": "https://github.com/timcade-stuff/moogl-radio-plugin/releases/latest/download/MooglRadio.zip"
