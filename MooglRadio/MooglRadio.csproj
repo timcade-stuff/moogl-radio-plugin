@@ -23,12 +23,15 @@
   </ItemGroup>
 
   <!--
-    DRAFT: packaging via DalamudPackager (pulled in by the Dalamud.NET.Sdk)
-    is intentionally left commented out until this has been built against
-    a real local Dalamud install and the current DalamudPackager task
-    parameters have been confirmed — this environment has no Dalamud
-    install to verify against. See README.md "Building" for the checklist.
-
+    Packaging via DalamudPackager (pulled in by the Dalamud.NET.Sdk).
+    Produces a MooglRadio.zip somewhere under bin/Release on build — the
+    CI workflow (.github/workflows/release.yml) globs for it and uploads
+    it to GitHub Releases, which is what repo.json's DownloadLink* fields
+    point at.
+    Params unverified against a real Dalamud install (see README.md); if
+    the build fails here on a real machine, check DalamudPackager's
+    current parameter names against its NuGet package README.
+  -->
   <Target Name="PackagePlugin" AfterTargets="Build">
     <DalamudPackager
       ProjectDir="$(ProjectDir)"
@@ -37,6 +40,5 @@
       VersionComponents="4"
       MakeZip="true" />
   </Target>
-  -->
 
 </Project>

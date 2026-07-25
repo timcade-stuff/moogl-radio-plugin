@@ -1,0 +1,54 @@
+name: Release
+
+# Push a version tag (e.g. `git tag v0.1.0 && git push origin v0.1.0`) to
+# build the plugin and publish MooglRadio.zip to a GitHub Release.
+# repo.json's DownloadLink* fields point at releases/latest/download/MooglRadio.zip,
+# so this is what makes the custom Dalamud repo stay up to date automatically.
+#
+# UNVERIFIED: this hasn't been run for real yet (no local Dalamud install to
+# test against, see README.md). Things most likely to need adjusting once you
+# run it for real:
+#  - the .NET SDK version below (net10.0-windows may need a newer/preview SDK)
+#  - the glob used to locate the DalamudPackager zip output
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore MooglRadio/MooglRadio.csproj
+
+      - name: Build (Release)
+        run: dotnet build MooglRadio/MooglRadio.csproj -c Release --no-restore
+
+      - name: Locate packaged zip
+        id: locate_zip
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem -Path MooglRadio/bin/Release -Recurse -Filter "MooglRadio.zip" | Select-Object -First 1
+          if (-not $zip) {
+            Write-Error "MooglRadio.zip not found under MooglRadio/bin/Release — check DalamudPackager output path."
+            exit 1
+          }
+          echo "zip_path=$($zip.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.locate_zip.outputs.zip_path }}
+          generate_release_notes: true

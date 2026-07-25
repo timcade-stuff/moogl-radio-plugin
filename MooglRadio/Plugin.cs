@@ -39,7 +39,7 @@ public sealed class Plugin : IDalamudPlugin
 
         this.commandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Toggle the MOOGLradio player window.",
+            HelpMessage = "Toggle the MOOGLradio player window. Subcommands: lock, unlock, ct (toggle click-through).",
         });
 
         this.pluginInterface.UiBuilder.Draw += WindowSystem.Draw;
@@ -50,7 +50,28 @@ public sealed class Plugin : IDalamudPlugin
 
     public void SaveConfiguration() => pluginInterface.SavePluginConfig(Configuration);
 
-    private void OnCommand(string command, string args) => mainWindow.Toggle();
+    private void OnCommand(string command, string args)
+    {
+        switch (args.Trim().ToLowerInvariant())
+        {
+            case "lock":
+                Configuration.Locked = true;
+                SaveConfiguration();
+                break;
+            case "unlock":
+                Configuration.Locked = false;
+                SaveConfiguration();
+                break;
+            case "ct":
+            case "clickthrough":
+                Configuration.ClickThrough = !Configuration.ClickThrough;
+                SaveConfiguration();
+                break;
+            default:
+                mainWindow.Toggle();
+                break;
+        }
+    }
 
     public void Dispose()
     {

@@ -1,8 +1,18 @@
 # MooglRadio (Dalamud plugin)
 
 In-game player for [MOOGLradio](https://github.com/REPLACE_ME/moogl-radio)
-— play/pause, volume, and now-playing track/DJ info, docked in an ImGui
-window. No DJ/admin functionality here; that lives on the website.
+— play/pause, volume, and now-playing track/DJ info, in a compact,
+fixed-size ImGui window. Background opacity is adjustable, and the window
+can be pinned (no drag) and set click-through via the gear icon or chat
+subcommands. No DJ/admin functionality here; that lives on the website.
+
+## Commands
+
+- `/mooglradio` — toggle the player window.
+- `/mooglradio lock` / `/mooglradio unlock` — pin/unpin the window position.
+- `/mooglradio ct` — toggle click-through. Since a click-through window
+  can't be clicked to reach its own gear-icon settings, this chat command
+  is the way back out if you get stuck in click-through mode.
 
 ## Status: early scaffold, not yet build-verified in-game
 
@@ -25,7 +35,11 @@ Things to double-check when you pick this up for real:
 1. **`Dalamud.Bindings.ImGui` namespace** — `Windows/MainWindow.cs`
    assumes `using Dalamud.Bindings.ImGui;` gives you the `ImGui` static
    class. If that doesn't resolve, try `using ImGuiNET;` instead —
-   Dalamud's ImGui binding has been renamed across versions.
+   Dalamud's ImGui binding has been renamed across versions. Also unverified:
+   `Window.PreDraw()`/`Flags`/`ImGui.SetNextWindowBgAlpha` (used for the
+   pin/click-through/opacity controls) and the ⏸/▶/⚙ glyphs rendering with
+   Dalamud's default ImGui font — swap for text labels if they show as
+   tofu boxes.
 2. **`DalamudApiLevel` in `MooglRadio/MooglRadio.json` / `repo.json`** —
    currently set to `13` as a placeholder; check Dalamud's current API
    level (visible in-game under Dalamud Settings → About, or in the

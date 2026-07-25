@@ -6,12 +6,12 @@
     "AssemblyVersion": "0.1.0.0",
     "Description": "Listen to MOOGLradio, the FFXIV-themed internet radio station, from in-game.",
     "Punchline": "Tune in to MOOGLradio without leaving Eorzea.",
-    "RepoUrl": "https://github.com/REPLACE_ME/moogl-radio-plugin",
+    "RepoUrl": "https://github.com/timcade-stuff/moogl-radio-plugin",
     "ApplicableVersion": "any",
     "Tags": ["radio", "music", "audio"],
     "DalamudApiLevel": 13,
-    "DownloadLinkInstall": "https://github.com/REPLACE_ME/moogl-radio-plugin/releases/latest/download/MooglRadio.zip",
-    "DownloadLinkUpdate": "https://github.com/REPLACE_ME/moogl-radio-plugin/releases/latest/download/MooglRadio.zip",
-    "DownloadLinkTesting": "https://github.com/REPLACE_ME/moogl-radio-plugin/releases/latest/download/MooglRadio.zip"
+    "DownloadLinkInstall": "https://github.com/timcade-stuff/moogl-radio-plugin/releases/latest/download/MooglRadio.zip",
+    "DownloadLinkUpdate": "https://github.com/timcade-stuff/moogl-radio-plugin/releases/latest/download/MooglRadio.zip",
+    "DownloadLinkTesting": "https://github.com/timcade-stuff/moogl-radio-plugin/releases/latest/download/MooglRadio.zip"
   }
 ]

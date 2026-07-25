@@ -5,7 +5,7 @@
   "AssemblyVersion": "0.1.0.0",
   "Description": "Listen to MOOGLradio, the FFXIV-themed internet radio station, from in-game. Play/pause, volume, and now-playing track info.",
   "Punchline": "Tune in to MOOGLradio without leaving Eorzea.",
-  "RepoUrl": "https://github.com/REPLACE_ME/moogl-radio-plugin",
+  "RepoUrl": "https://github.com/timcade-stuff/moogl-radio-plugin",
   "ApplicableVersion": "any",
   "Tags": ["radio", "music", "audio"],
   "DalamudApiLevel": 13

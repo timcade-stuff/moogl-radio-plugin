@@ -11,4 +11,13 @@ public sealed class Configuration : IPluginConfiguration
     public string ApiBaseUrl { get; set; } = "https://radio.moogl.ing";
 
     public string StreamUrl { get; set; } = "https://radio.moogl.ing/listen/mooglradio.mp3";
+
+    /// <summary>Pins the window in place (disables dragging).</summary>
+    public bool Locked { get; set; }
+
+    /// <summary>Makes the window ignore all mouse input, letting clicks pass through to the game.</summary>
+    public bool ClickThrough { get; set; }
+
+    /// <summary>Window background opacity, 0 (invisible) to 1 (opaque).</summary>
+    public float BackgroundAlpha { get; set; } = 0.9f;
 }
