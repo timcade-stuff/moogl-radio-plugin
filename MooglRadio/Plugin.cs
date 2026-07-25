@@ -49,6 +49,7 @@ public sealed class Plugin : IDalamudPlugin
 
         StreamPlayer.Volume = Configuration.Volume;
         StreamPlayer.Error += ex => this.log.Error(ex, "MOOGLradio playback error");
+        StreamPlayer.Diagnostic += msg => this.log.Info($"MOOGLradio: {msg}");
         StreamPlayer.Started += () =>
         {
             if (Configuration.MuteGameBgm)

@@ -1,3 +1,4 @@
+using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using NLayer.NAudioSupport;
 
@@ -17,6 +18,15 @@ namespace MooglRadio.Services;
 /// same constructor shape and no native codec dependency. The response
 /// stream is also wrapped in <see cref="PositionTrackingStream"/> — see
 /// its doc comment for why (also confirmed in-game).
+///
+/// Output goes through WasapiOut rather than WaveOutEvent: WaveOutEvent
+/// (winmm-based) accepted Init()/Play() without error under Wine but
+/// produced no audible output at all, even after the float->PCM16 fix
+/// above — confirmed in-game. WASAPI is the modern audio API most
+/// Windows games (including FFXIV itself) actually target, so Wine's
+/// Mac compatibility layer is a much safer bet to have implemented
+/// properly. <see cref="Diagnostic"/> logs key playback checkpoints in
+/// case this still produces no sound — see its doc comment.
 /// </summary>
 public sealed class StreamPlayer : IDisposable
 {
@@ -24,7 +34,8 @@ public sealed class StreamPlayer : IDisposable
 
     private readonly HttpClient httpClient = new();
     private CancellationTokenSource? cts;
-    private WaveOutEvent? waveOut;
+    private WasapiOut? waveOut;
+    private WaveFloatTo16Provider? outputProvider;
     private float volume = 0.5f;
 
     public bool IsPlaying { get; private set; }
@@ -40,15 +51,28 @@ public sealed class StreamPlayer : IDisposable
     /// <summary>Fires when playback stops, whether via explicit Stop() or a playback failure.</summary>
     public event Action? Stopped;
 
+    /// <summary>
+    /// Fires with short human-readable status lines at key playback
+    /// checkpoints (format detected, output device initialized, playback
+    /// state after Play()). Not user-facing — intended for IPluginLog, so
+    /// a "no error, no sound" report has something concrete to check next
+    /// instead of another blind guess.
+    /// </summary>
+    public event Action<string>? Diagnostic;
+
     public float Volume
     {
         get => volume;
         set
         {
             volume = Math.Clamp(value, 0f, 1f);
-            if (waveOut is not null)
+            // Deliberately not waveOut.Volume: WasapiOut.Volume writes to the
+            // *system's* master output volume (mmDevice.AudioEndpointVolume),
+            // not a per-stream level. Scaling samples in the float->16 provider
+            // instead keeps this to "this stream's" volume, like the slider implies.
+            if (outputProvider is not null)
             {
-                waveOut.Volume = volume;
+                outputProvider.Volume = volume;
             }
         }
     }
@@ -80,6 +104,7 @@ public sealed class StreamPlayer : IDisposable
         waveOut?.Stop();
         waveOut?.Dispose();
         waveOut = null;
+        outputProvider = null;
         IsPlaying = false;
     }
 
@@ -129,6 +154,8 @@ public sealed class StreamPlayer : IDisposable
                     {
                         BufferDuration = TimeSpan.FromSeconds(20),
                     };
+                    Diagnostic?.Invoke(
+                        $"First frame decoded: {frame.SampleRate}Hz, {waveFormat.Channels}ch, {frame.BitRate}bps");
                 }
 
                 var decompressed = decompressor.DecompressFrame(frame, buffer, 0);
@@ -136,13 +163,13 @@ public sealed class StreamPlayer : IDisposable
 
                 if (waveOut is null && bufferedWaveProvider.BufferedDuration.TotalSeconds > 2)
                 {
-                    waveOut = new WaveOutEvent { Volume = volume };
                     // NLayer's decoder outputs 32-bit IEEE float; convert to 16-bit PCM
-                    // before handing off to WaveOutEvent — Wine's DirectSound/WASAPI
-                    // shims have historically accepted IEEE float Init()/Play() calls
-                    // without erroring, then produced no audible output at all.
-                    waveOut.Init(new WaveFloatTo16Provider(bufferedWaveProvider));
+                    // before handing off to the output device.
+                    outputProvider = new WaveFloatTo16Provider(bufferedWaveProvider) { Volume = volume };
+                    waveOut = new WasapiOut(AudioClientShareMode.Shared, 200);
+                    waveOut.Init(outputProvider);
                     waveOut.Play();
+                    Diagnostic?.Invoke($"WASAPI output initialized, PlaybackState={waveOut.PlaybackState}");
                 }
             }
 

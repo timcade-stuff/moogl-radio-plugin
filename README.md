@@ -52,16 +52,28 @@ Things to double-check when you pick this up for real:
    with no error shown — this is why the plugin wasn't appearing
    in-game). Re-check this value whenever Dalamud ships a new API level
    and the plugin needs a corresponding release.
-3. **MP3 decoding under Wine** — ~~fixed 2026-07-25~~. Two separate
-   `NotSupportedException`s in a row here, both confirmed in-game: (a)
+3. **MP3 decoding/playback under Wine** — ~~fixed 2026-07-25~~. Four
+   separate issues in a row here, all confirmed in-game: (a)
    `AcmMp3FrameDecompressor` calling into the (Wine-less) Windows ACM
    codec, fixed by swapping to `NLayer.NAudioSupport.Mp3FrameDecompressor`
-   (same constructor shape, pure C# decode); (b) NAudio's
-   `Mp3Frame.LoadFromStream` unconditionally reads `input.Position` as
-   its first line, which throws on the non-seekable HTTP response
-   stream — fixed with `StreamPlayer.PositionTrackingStream`, a thin
-   wrapper that reports a running byte count instead of a real
-   (unsupported) stream position.
+   (pure C# decode); (b) NAudio's `Mp3Frame.LoadFromStream` unconditionally
+   reads `input.Position` as its first line, which throws on the
+   non-seekable HTTP response stream — fixed with
+   `StreamPlayer.PositionTrackingStream`; (c) NLayer's decoder outputs
+   32-bit IEEE float, and `WaveOutEvent` (winmm) accepted `Init()`/`Play()`
+   on that format without erroring while producing no audible output at
+   all — fixed by converting to 16-bit PCM via NAudio's
+   `WaveFloatTo16Provider`; (d) even after that conversion, `WaveOutEvent`
+   itself still produced no sound under Wine (no exception either) —
+   swapped for `WasapiOut`, since WASAPI is the modern API most Windows
+   games (FFXIV included) actually target, a safer bet for Wine's Mac
+   compatibility layer to have implemented. Also note: `WasapiOut.Volume`
+   controls the *system's* master output volume, not a per-stream
+   level — the volume slider deliberately scales samples via
+   `WaveFloatTo16Provider.Volume` instead, never touching `waveOut.Volume`.
+   `StreamPlayer.Diagnostic` logs key checkpoints (format detected, output
+   initialized + PlaybackState) via `IPluginLog.Info` in case WASAPI still
+   doesn't produce sound — check `/xllog` for "MOOGLradio:" lines.
 4. **`DalamudPackager` target** — enabled and confirmed working via CI
    (produces `MooglRadio.zip`), but only compile-verified, not run
    in-game.
