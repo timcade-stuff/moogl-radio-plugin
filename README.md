@@ -49,12 +49,16 @@ Things to double-check when you pick this up for real:
    with no error shown — this is why the plugin wasn't appearing
    in-game). Re-check this value whenever Dalamud ships a new API level
    and the plugin needs a corresponding release.
-3. **MP3 decoding under Wine** — ~~fixed 2026-07-25~~. `AcmMp3FrameDecompressor`
-   called into the Windows ACM codec, which doesn't exist under Wine;
-   confirmed in-game as a `NotSupportedException` ("Specified method is
-   not supported") the moment Play was pressed. Swapped for
-   `NLayer.NAudioSupport.Mp3FrameDecompressor` — same constructor shape,
-   pure C# decode, no native codec dependency.
+3. **MP3 decoding under Wine** — ~~fixed 2026-07-25~~. Two separate
+   `NotSupportedException`s in a row here, both confirmed in-game: (a)
+   `AcmMp3FrameDecompressor` calling into the (Wine-less) Windows ACM
+   codec, fixed by swapping to `NLayer.NAudioSupport.Mp3FrameDecompressor`
+   (same constructor shape, pure C# decode); (b) NAudio's
+   `Mp3Frame.LoadFromStream` unconditionally reads `input.Position` as
+   its first line, which throws on the non-seekable HTTP response
+   stream — fixed with `StreamPlayer.PositionTrackingStream`, a thin
+   wrapper that reports a running byte count instead of a real
+   (unsupported) stream position.
 4. **`DalamudPackager` target** — enabled and confirmed working via CI
    (produces `MooglRadio.zip`), but only compile-verified, not run
    in-game.

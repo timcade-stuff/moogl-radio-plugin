@@ -14,7 +14,9 @@ namespace MooglRadio.Services;
 /// doesn't exist under Wine (confirmed in-game — it threw
 /// NotSupportedException, since FFXIV on Mac runs under Wine, not
 /// native Windows). NLayer.NAudioSupport.Mp3FrameDecompressor has the
-/// same constructor shape and no native codec dependency.
+/// same constructor shape and no native codec dependency. The response
+/// stream is also wrapped in <see cref="PositionTrackingStream"/> — see
+/// its doc comment for why (also confirmed in-game).
 /// </summary>
 public sealed class StreamPlayer : IDisposable
 {
@@ -71,7 +73,8 @@ public sealed class StreamPlayer : IDisposable
             using var response = await httpClient.GetAsync(
                 streamUrl, HttpCompletionOption.ResponseHeadersRead, token);
             response.EnsureSuccessStatusCode();
-            await using var stream = await response.Content.ReadAsStreamAsync(token);
+            await using var rawStream = await response.Content.ReadAsStreamAsync(token);
+            await using var stream = new PositionTrackingStream(rawStream);
 
             var buffer = new byte[ReadBufferSize];
             IMp3FrameDecompressor? decompressor = null;
@@ -142,5 +145,58 @@ public sealed class StreamPlayer : IDisposable
     {
         Stop();
         httpClient.Dispose();
+    }
+
+    /// <summary>
+    /// Wraps a non-seekable network stream to satisfy NAudio's
+    /// <see cref="Mp3Frame.LoadFromStream(Stream)"/>, whose very first line
+    /// reads <c>input.Position</c> unconditionally — confirmed in-game as a
+    /// <see cref="NotSupportedException"/> thrown by the HTTP response
+    /// stream's Position getter, since HttpClient response streams aren't
+    /// seekable and don't track a position. This just reports a running
+    /// count of bytes read so far, which is all LoadFromStream needs it for
+    /// (recording each frame's offset, not actually seeking).
+    /// </summary>
+    private sealed class PositionTrackingStream(Stream inner) : Stream
+    {
+        private long position;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => position;
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var read = inner.Read(buffer, offset, count);
+            position += read;
+            return read;
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                inner.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
     }
 }
