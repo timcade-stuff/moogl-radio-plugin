@@ -1,3 +1,4 @@
+using System.Net;
 using NAudio.Wave;
 using NLayer.NAudioSupport;
 
@@ -29,10 +30,15 @@ namespace MooglRadio.Services;
 /// here, since it would reintroduce the exact kind of platform-specific
 /// risk NLayer's pure-C# decoding was chosen to avoid.
 ///
+/// The request is pinned to HTTP/1.1 — confirmed in-game the stream was
+/// disconnecting after only 3-6 frames (~100ms of audio) even though the
+/// same URL streams fine via curl. HttpClient negotiates HTTP/2 by
+/// default against Cloudflare, and HTTP/2 combined with
+/// Mp3Frame.LoadFromStream's synchronous Stream.Read() calls has known
+/// premature-completion flakiness on some .NET runtimes.
+///
 /// <see cref="Diagnostic"/> logs key playback checkpoints, including
-/// periodic buffering progress — added because "no error, no sound" has
-/// happened twice now with nothing to distinguish "stalled after frame 1"
-/// from "just hasn't buffered 2 seconds yet."
+/// periodic buffering progress and the negotiated HTTP version.
 /// </summary>
 public sealed class StreamPlayer : IDisposable
 {
@@ -114,9 +120,22 @@ public sealed class StreamPlayer : IDisposable
     {
         try
         {
-            using var response = await httpClient.GetAsync(
-                streamUrl, HttpCompletionOption.ResponseHeadersRead, token);
+            // Force HTTP/1.1: HttpClient negotiates HTTP/2 by default when the
+            // server offers it (Cloudflare does, here), and HTTP/2 combined with
+            // Mp3Frame.LoadFromStream's synchronous Stream.Read() calls has known
+            // premature-stream-completion flakiness on some .NET runtimes.
+            // Confirmed in-game: the stream was ending after 3-6 frames
+            // (~100ms of audio), consistent with this rather than a real
+            // server-side disconnect (curl against the same URL streams fine).
+            var request = new HttpRequestMessage(HttpMethod.Get, streamUrl)
+            {
+                Version = HttpVersion.Version11,
+                VersionPolicy = HttpVersionPolicy.RequestVersionExact,
+            };
+            using var response = await httpClient.SendAsync(
+                request, HttpCompletionOption.ResponseHeadersRead, token);
             response.EnsureSuccessStatusCode();
+            Diagnostic?.Invoke($"Connected: HTTP/{response.Version}, status {(int)response.StatusCode}");
             await using var rawStream = await response.Content.ReadAsStreamAsync(token);
             await using var stream = new PositionTrackingStream(rawStream);
 

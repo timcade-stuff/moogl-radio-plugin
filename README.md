@@ -75,9 +75,15 @@ Things to double-check when you pick this up for real:
    platform risk NLayer's pure-C# decode was specifically chosen to avoid.)
    `StreamPlayer.Diagnostic` now logs periodic per-frame buffering progress
    (not just start/end checkpoints) via `IPluginLog.Info` — check `/xllog`
-   for "MOOGLradio:" lines; if output still never initializes, the log
-   should now show exactly how far frame-by-frame decoding gets before
-   stalling, which the previous two attempts had no visibility into.
+   for "MOOGLradio:" lines. That surfaced the next issue: the stream was
+   disconnecting after only 3-6 frames (~100ms of audio), confirmed via
+   the "Stream ended after N frames" diagnostic, even though the same URL
+   streams fine via `curl`. Likely cause: `HttpClient` negotiates HTTP/2
+   by default against Cloudflare, and HTTP/2 combined with
+   `Mp3Frame.LoadFromStream`'s synchronous `Stream.Read()` calls has known
+   premature-completion flakiness on some .NET runtimes — fixed by
+   pinning the request to HTTP/1.1 (`HttpVersionPolicy.RequestVersionExact`).
+   Not yet confirmed in-game as of this writing.
 4. **`DalamudPackager` target** — enabled and confirmed working via CI
    (produces `MooglRadio.zip`), but only compile-verified, not run
    in-game.
