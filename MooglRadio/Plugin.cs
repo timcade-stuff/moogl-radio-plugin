@@ -31,6 +31,19 @@ public sealed class Plugin : IDalamudPlugin
         this.log = log;
 
         Configuration = this.pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+
+        // v1 configs (saved before the station domain was corrected) have
+        // radio.moogl.ing baked in from an earlier scaffolding placeholder
+        // that never actually resolved — force them onto the real moogl.fm
+        // endpoints once, so existing installs don't stay stuck on 404s.
+        if (Configuration.Version < 2)
+        {
+            Configuration.ApiBaseUrl = "https://moogl.fm";
+            Configuration.StreamUrl = "https://moogl.fm/listen/mooglradio.mp3";
+            Configuration.Version = 2;
+            this.pluginInterface.SavePluginConfig(Configuration);
+        }
+
         StreamPlayer.Volume = Configuration.Volume;
         StreamPlayer.Error += ex => this.log.Error(ex, "MOOGLradio playback error");
 

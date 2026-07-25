@@ -4,7 +4,7 @@ namespace MooglRadio;
 
 public sealed class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
 
     public float Volume { get; set; } = 0.5f;
 
