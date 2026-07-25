@@ -11,6 +11,11 @@ public sealed record NowPlaying(
     NowPlayingDj? Dj,
     string StreamUrl);
 
-public sealed record NowPlayingTrack(string Title, string Artist, DateTimeOffset StartedAt);
+/// <summary>
+/// ArtUrl is relative (e.g. "/api/now-playing/art") — prefix with the
+/// configured ApiBaseUrl to get a fetchable URL. Null when the current
+/// track has no cover art available.
+/// </summary>
+public sealed record NowPlayingTrack(string Title, string Artist, string? Album, string? ArtUrl);
 
 public sealed record NowPlayingDj(string Name);

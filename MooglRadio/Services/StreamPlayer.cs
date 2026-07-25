@@ -37,8 +37,10 @@ namespace MooglRadio.Services;
 /// Mp3Frame.LoadFromStream's synchronous Stream.Read() calls has known
 /// premature-completion flakiness on some .NET runtimes.
 ///
-/// <see cref="Diagnostic"/> logs key playback checkpoints, including
-/// periodic buffering progress and the negotiated HTTP version.
+/// <see cref="Diagnostic"/> logs key one-off playback checkpoints (connected,
+/// first frame decoded, output initialized, stream ended/errors) — no
+/// per-frame spam, this was pared back once the connection issues above
+/// were actually root-caused.
 /// </summary>
 public sealed class StreamPlayer : IDisposable
 {
@@ -109,6 +111,16 @@ public sealed class StreamPlayer : IDisposable
     {
         cts?.Cancel();
         cts = null;
+        // Silence before Stop()/Dispose(): under Wine, WaveOutEvent.Stop() doesn't
+        // always flush already-queued device buffers immediately, which let audio
+        // that was buffered ahead keep audibly playing for a while after Stop() —
+        // confirmed in-game. Zeroing the sample-scaling volume first means anything
+        // still in flight comes out silent even if the device itself lags on Stop().
+        if (outputProvider is not null)
+        {
+            outputProvider.Volume = 0f;
+        }
+
         waveOut?.Stop();
         waveOut?.Dispose();
         waveOut = null;
@@ -187,12 +199,6 @@ public sealed class StreamPlayer : IDisposable
                     };
                     Diagnostic?.Invoke(
                         $"First frame decoded: {frame.SampleRate}Hz, {waveFormat.Channels}ch, {frame.BitRate}bps");
-                }
-                else if (frameCount % 20 == 0)
-                {
-                    Diagnostic?.Invoke(
-                        $"Frame {frameCount}: buffered {bufferedWaveProvider!.BufferedDuration.TotalSeconds:F2}s, " +
-                        $"output {(waveOut is null ? "not started" : $"started (PlaybackState={waveOut.PlaybackState})")}");
                 }
 
                 var decompressed = decompressor.DecompressFrame(frame, buffer, 0);

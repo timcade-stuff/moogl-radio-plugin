@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <AssemblyName>MooglRadio</AssemblyName>
-    <Version>0.1.10.0</Version>
+    <Version>0.1.11.0</Version>
     <Description>Listen to MOOGLradio, the FFXIV-themed internet radio station, in-game.</Description>
     <Company>MOOGLradio</Company>
     <Product>MooglRadio</Product>

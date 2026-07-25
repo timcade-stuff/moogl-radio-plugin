@@ -1,13 +1,13 @@
 # MooglRadio (Dalamud plugin)
 
 In-game player for [MOOGLradio](https://github.com/REPLACE_ME/moogl-radio)
-— play/pause, volume, and now-playing track/DJ info, in a compact,
-fixed-size ImGui window. Background opacity is adjustable, and the window
-can be pinned (no drag) and set click-through via the gear icon or chat
-subcommands. While the radio plays, the game's own BGM is muted (via
-Dalamud's official `IGameConfig`, not memory hacking) so it doesn't layer
-under the stream — toggle this in the gear-icon settings, on by default.
-No DJ/admin functionality here; that lives on the website.
+— play/pause, volume, cover art, and scrolling now-playing track/DJ info,
+in a compact, fixed-size ImGui window. Background opacity is adjustable,
+and the window can be pinned (no drag) and set click-through via the gear
+icon or chat subcommands. While the radio plays, the game's own BGM is
+muted (via Dalamud's official `IGameConfig`, not memory hacking) so it
+doesn't layer under the stream — toggle this in the gear-icon settings,
+on by default. No DJ/admin functionality here; that lives on the website.
 
 ## Commands
 
@@ -17,10 +17,11 @@ No DJ/admin functionality here; that lives on the website.
   can't be clicked to reach its own gear-icon settings, this chat command
   is the way back out if you get stuck in click-through mode.
 
-## Status: builds and packages cleanly in CI, not yet run in-game
+## Status: core playback confirmed working in-game as of 2026-07-25
 
 This was scaffolded and developed in an environment with no local
-Dalamud/XIVLauncher install:
+Dalamud/XIVLauncher install, so everything below was iterated on blind
+and confirmed (or fixed) against real in-game reports:
 
 - ✅ `Dalamud.NET.Sdk/15.0.0` resolves, restores, and the csproj is
   structurally valid (confirmed via `dotnet build`).
@@ -31,9 +32,12 @@ Dalamud/XIVLauncher install:
   published assemblies from `goatcorp.github.io/dalamud-distrib`).
 - ✅ `DalamudPackager` packages a working `MooglRadio.zip` and CI publishes
   it to GitHub Releases automatically on tag push (see `v0.1.0`).
-- ❌ Not run in-game. Playback (NAudio/ACM mp3 decoding) and the ImGui
-  binding namespace/glyph rendering are unverified — CI proves it
-  compiles, not that it works at runtime.
+- ✅ **Confirmed in-game (v0.1.10):** stream connects, decodes, and plays
+  audibly; game BGM correctly mutes while playing. See item 3 below for
+  the full chain of issues this took.
+- ❌ Not yet confirmed in-game: cover art (`AlbumArtService`), the
+  scrolling marquee text, and the instant-stop-on-pause fix — all added
+  after the v0.1.10 confirmation, see items 6-8 below.
 
 Things to double-check when you pick this up for real:
 
@@ -52,8 +56,9 @@ Things to double-check when you pick this up for real:
    with no error shown — this is why the plugin wasn't appearing
    in-game). Re-check this value whenever Dalamud ships a new API level
    and the plugin needs a corresponding release.
-3. **MP3 decoding/playback under Wine** — still being chased as of
-   2026-07-25, several issues fixed in a row, all confirmed in-game: (a)
+3. **MP3 decoding/playback under Wine** — ✅ confirmed working in-game as
+   of v0.1.10 (2026-07-25), after several issues fixed in a row, all
+   confirmed in-game along the way: (a)
    `AcmMp3FrameDecompressor` calling into the (Wine-less) Windows ACM
    codec, fixed by swapping to `NLayer.NAudioSupport.Mp3FrameDecompressor`
    (pure C# decode); (b) NAudio's `Mp3Frame.LoadFromStream` unconditionally
@@ -93,20 +98,47 @@ Things to double-check when you pick this up for real:
    read gets silently misread as a truncated frame (matching the
    nondeterministic 3-6 frame cutoff — real network packet timing, not a
    fixed count). Fixed by giving `PositionTrackingStream` the same
-   read-ahead-buffer full-read loop as NAudio's `ReadFullyStream`. Not
-   yet confirmed in-game as of this writing.
+   read-ahead-buffer full-read loop as NAudio's `ReadFullyStream`. **This
+   fixed it** — confirmed in-game, audio actually plays.
 4. **`DalamudPackager` target** — enabled and confirmed working via CI
    (produces `MooglRadio.zip`), but only compile-verified, not run
    in-game.
-5. **`BgmMuter` (`Services/BgmMuter.cs`)** — mutes the game's BGM via
-   `IGameConfig.Set(SystemConfigOption.IsSndBgm, true)` while the radio
-   plays, restoring the previous value on stop. The option names
-   (`IsSndBgm`, `SoundBgm`) are confirmed from Dalamud's own source, but
-   the specific "`true` = muted" semantics are inferred (it maps to the
-   "Music" mute checkbox in Character Configuration → Sound) and not yet
-   confirmed in-game — if muting the radio's own `Play` button instead
-   mutes the wrong direction (unmutes BGM, or fails silently), the fix
-   is inverting the bool in `BgmMuter.MuteForRadio`/`RestoreGameBgm`.
+5. **`BgmMuter` (`Services/BgmMuter.cs`)** — ✅ confirmed working in-game:
+   mutes the game's BGM via `IGameConfig.Set(SystemConfigOption.IsSndBgm,
+   true)` while the radio plays, restoring the previous value on stop.
+   The `true` = muted direction was inferred (not just the option names,
+   which came straight from Dalamud's source) and has now been confirmed
+   correct in-game — no inversion needed.
+6. **Instant stop on Pause (`StreamPlayer.StopInternal`)** — not yet
+   confirmed in-game. Reported: pressing Pause kept playing buffered
+   audio for a while before actually going silent, though the BGM
+   correctly un-muted immediately (confirming `Stop()` itself does fire
+   right away). Suspected cause: under Wine, `WaveOutEvent.Stop()`
+   doesn't always flush already-queued device buffers instantly. Fixed
+   by zeroing `WaveFloatTo16Provider.Volume` before calling
+   `waveOut.Stop()`/`Dispose()`, so anything still in flight at the
+   device level comes out silent rather than audible. If this doesn't
+   fully fix it, the remaining gap is genuinely inside Wine's audio
+   driver and not something app-level code can control.
+7. **`AlbumArtService` (`Services/AlbumArtService.cs`)** — not yet
+   confirmed in-game. Downloads the current track's cover art
+   (`{ApiBaseUrl}{track.ArtUrl}`) and converts it via
+   `ITextureProvider.CreateFromImageAsync` for rendering with
+   `ImGui.Image`. Two specific unknowns: (a) whether
+   `CreateFromImageAsync` is actually safe to call off the main/framework
+   thread — its doc comment doesn't flag a main-thread requirement
+   (unlike `CreateTextureFromSeString`, which explicitly does), but this
+   hasn't been exercised in-game; (b) the exact `ImGui.Image` overload
+   signature in `Dalamud.Bindings.ImGui` — used the 2-arg
+   `(ImTextureID, Vector2)` form, may need `uv0`/`uv1`/tint/border
+   params depending on the binding version.
+8. **Scrolling marquee text (`MainWindow.DrawMarquee`)** — not yet
+   confirmed in-game. Hand-rolled via `ImGuiWindowDrawList.PushClipRect`
+   + `AddText` with a time-based scroll offset (`ImGui.GetTime()`), since
+   ImGui has no built-in marquee widget. Text that fits the column just
+   draws normally; only overflowing lines scroll. Two-copy wraparound
+   (`AddText` called twice per scrolling line) should make the loop
+   seamless, but the exact spacing/legibility hasn't been seen rendered.
 
 ## Building
 

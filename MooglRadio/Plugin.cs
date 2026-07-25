@@ -21,17 +21,20 @@ public sealed class Plugin : IDalamudPlugin
     public WindowSystem WindowSystem { get; } = new("MooglRadio");
     public StreamPlayer StreamPlayer { get; } = new();
     public NowPlayingClient NowPlayingClient { get; } = new();
+    public AlbumArtService AlbumArtService { get; }
 
     public Plugin(
         IDalamudPluginInterface pluginInterface,
         ICommandManager commandManager,
         IPluginLog log,
-        IGameConfig gameConfig)
+        IGameConfig gameConfig,
+        ITextureProvider textureProvider)
     {
         this.pluginInterface = pluginInterface;
         this.commandManager = commandManager;
         this.log = log;
         this.bgmMuter = new BgmMuter(gameConfig, log);
+        this.AlbumArtService = new AlbumArtService(textureProvider, log);
 
         Configuration = this.pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
@@ -58,6 +61,8 @@ public sealed class Plugin : IDalamudPlugin
             }
         };
         StreamPlayer.Stopped += bgmMuter.RestoreGameBgm;
+
+        NowPlayingClient.Updated += np => AlbumArtService.UpdateFor(Configuration.ApiBaseUrl, np.Track?.ArtUrl);
 
         mainWindow = new MainWindow(this);
         WindowSystem.AddWindow(mainWindow);
@@ -126,5 +131,6 @@ public sealed class Plugin : IDalamudPlugin
         commandManager.RemoveHandler(CommandName);
         StreamPlayer.Dispose();
         NowPlayingClient.Dispose();
+        AlbumArtService.Dispose();
     }
 }
