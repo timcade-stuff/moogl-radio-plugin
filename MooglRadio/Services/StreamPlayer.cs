@@ -234,17 +234,31 @@ public sealed class StreamPlayer : IDisposable
     }
 
     /// <summary>
-    /// Wraps a non-seekable network stream to satisfy NAudio's
-    /// <see cref="Mp3Frame.LoadFromStream(Stream)"/>, whose very first line
-    /// reads <c>input.Position</c> unconditionally — confirmed in-game as a
-    /// <see cref="NotSupportedException"/> thrown by the HTTP response
-    /// stream's Position getter, since HttpClient response streams aren't
-    /// seekable and don't track a position. This just reports a running
-    /// count of bytes read so far, which is all LoadFromStream needs it for
-    /// (recording each frame's offset, not actually seeking).
+    /// Wraps a non-seekable network stream for two reasons, both confirmed
+    /// in-game as real failures:
+    ///
+    /// 1. <see cref="Mp3Frame.LoadFromStream(Stream)"/>'s first line reads
+    ///    <c>input.Position</c> unconditionally, which throws on the raw
+    ///    HTTP response stream (not seekable, no tracked position). Fixed
+    ///    by reporting a running byte count instead.
+    ///
+    /// 2. <c>Read()</c> is only ever guaranteed to return *at least one*
+    ///    byte when not at EOF, not the full count requested — a routine
+    ///    network short-read, whose exact timing is nondeterministic.
+    ///    LoadFromStream doesn't loop on its own reads, so a short read
+    ///    gets silently misread as a truncated/corrupt frame, surfacing as
+    ///    EndOfStreamException after a handful of frames (observed
+    ///    in-game varying between 3-6 — consistent with real network
+    ///    packet timing, not a fixed cutoff). This mirrors NAudio's own
+    ///    official streaming demo (NAudioDemo/Mp3StreamingDemo/ReadFullyStream.cs),
+    ///    which exists specifically to paper over this — our own
+    ///    from-scratch stream wrapper had skipped it.
     /// </summary>
     private sealed class PositionTrackingStream(Stream inner) : Stream
     {
+        private readonly byte[] readAheadBuffer = new byte[4096];
+        private int readAheadLength;
+        private int readAheadOffset;
         private long position;
 
         public override bool CanRead => true;
@@ -260,9 +274,30 @@ public sealed class StreamPlayer : IDisposable
 
         public override int Read(byte[] buffer, int offset, int count)
         {
-            var read = inner.Read(buffer, offset, count);
-            position += read;
-            return read;
+            var bytesRead = 0;
+            while (bytesRead < count)
+            {
+                var availableInReadAhead = readAheadLength - readAheadOffset;
+                if (availableInReadAhead > 0)
+                {
+                    var toCopy = Math.Min(availableInReadAhead, count - bytesRead);
+                    Array.Copy(readAheadBuffer, readAheadOffset, buffer, offset + bytesRead, toCopy);
+                    bytesRead += toCopy;
+                    readAheadOffset += toCopy;
+                }
+                else
+                {
+                    readAheadOffset = 0;
+                    readAheadLength = inner.Read(readAheadBuffer, 0, readAheadBuffer.Length);
+                    if (readAheadLength == 0)
+                    {
+                        break; // true end of stream
+                    }
+                }
+            }
+
+            position += bytesRead;
+            return bytesRead;
         }
 
         public override void Flush()

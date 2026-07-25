@@ -81,9 +81,20 @@ Things to double-check when you pick this up for real:
    streams fine via `curl`. Likely cause: `HttpClient` negotiates HTTP/2
    by default against Cloudflare, and HTTP/2 combined with
    `Mp3Frame.LoadFromStream`'s synchronous `Stream.Read()` calls has known
-   premature-completion flakiness on some .NET runtimes — fixed by
-   pinning the request to HTTP/1.1 (`HttpVersionPolicy.RequestVersionExact`).
-   Not yet confirmed in-game as of this writing.
+   premature-completion flakiness on some .NET runtimes — **did not fix
+   it**: confirmed in-game "Connected: HTTP/1.1" logged correctly, still
+   ended at frame 4. Real cause, found by reading NAudio's own official
+   streaming demo (`NAudioDemo/Mp3StreamingDemo`): it wraps the network
+   stream in `ReadFullyStream`, which our from-scratch
+   `PositionTrackingStream` never did. `Stream.Read()` is only guaranteed
+   to return *at least one* byte when not at EOF, not the full count
+   requested — network streams routinely return short reads, and
+   `Mp3Frame.LoadFromStream` doesn't loop on its own reads, so a short
+   read gets silently misread as a truncated frame (matching the
+   nondeterministic 3-6 frame cutoff — real network packet timing, not a
+   fixed count). Fixed by giving `PositionTrackingStream` the same
+   read-ahead-buffer full-read loop as NAudio's `ReadFullyStream`. Not
+   yet confirmed in-game as of this writing.
 4. **`DalamudPackager` target** — enabled and confirmed working via CI
    (produces `MooglRadio.zip`), but only compile-verified, not run
    in-game.
