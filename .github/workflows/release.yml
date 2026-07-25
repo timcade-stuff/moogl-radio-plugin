@@ -47,7 +47,12 @@ jobs:
         run: dotnet restore MooglRadio/MooglRadio.csproj
 
       - name: Build (Release)
-        run: dotnet build MooglRadio/MooglRadio.csproj -c Release --no-restore
+        run: dotnet build MooglRadio/MooglRadio.csproj -c Release --no-restore -v:normal
+
+      - name: List build output (debug)
+        if: always()
+        shell: pwsh
+        run: Get-ChildItem -Path MooglRadio\bin -Recurse | Select-Object FullName
 
       - name: Locate packaged zip
         id: locate_zip
