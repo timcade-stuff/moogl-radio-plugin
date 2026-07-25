@@ -4,7 +4,10 @@ In-game player for [MOOGLradio](https://github.com/REPLACE_ME/moogl-radio)
 — play/pause, volume, and now-playing track/DJ info, in a compact,
 fixed-size ImGui window. Background opacity is adjustable, and the window
 can be pinned (no drag) and set click-through via the gear icon or chat
-subcommands. No DJ/admin functionality here; that lives on the website.
+subcommands. While the radio plays, the game's own BGM is muted (via
+Dalamud's official `IGameConfig`, not memory hacking) so it doesn't layer
+under the stream — toggle this in the gear-icon settings, on by default.
+No DJ/admin functionality here; that lives on the website.
 
 ## Commands
 
@@ -62,6 +65,15 @@ Things to double-check when you pick this up for real:
 4. **`DalamudPackager` target** — enabled and confirmed working via CI
    (produces `MooglRadio.zip`), but only compile-verified, not run
    in-game.
+5. **`BgmMuter` (`Services/BgmMuter.cs`)** — mutes the game's BGM via
+   `IGameConfig.Set(SystemConfigOption.IsSndBgm, true)` while the radio
+   plays, restoring the previous value on stop. The option names
+   (`IsSndBgm`, `SoundBgm`) are confirmed from Dalamud's own source, but
+   the specific "`true` = muted" semantics are inferred (it maps to the
+   "Music" mute checkbox in Character Configuration → Sound) and not yet
+   confirmed in-game — if muting the radio's own `Play` button instead
+   mutes the wrong direction (unmutes BGM, or fails silently), the fix
+   is inverting the bool in `BgmMuter.MuteForRadio`/`RestoreGameBgm`.
 
 ## Building
 

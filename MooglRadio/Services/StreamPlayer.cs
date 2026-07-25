@@ -34,6 +34,12 @@ public sealed class StreamPlayer : IDisposable
 
     public event Action<Exception>? Error;
 
+    /// <summary>Fires when playback actually begins (a fresh Play() call, not a re-stop/restart).</summary>
+    public event Action? Started;
+
+    /// <summary>Fires when playback stops, whether via explicit Stop() or a playback failure.</summary>
+    public event Action? Stopped;
+
     public float Volume
     {
         get => volume;
@@ -49,14 +55,25 @@ public sealed class StreamPlayer : IDisposable
 
     public void Play(string streamUrl)
     {
-        Stop();
+        StopInternal();
         cts = new CancellationTokenSource();
         IsPlaying = true;
         LastError = null;
+        Started?.Invoke();
         _ = Task.Run(() => RunAsync(streamUrl, cts.Token));
     }
 
     public void Stop()
+    {
+        var wasPlaying = IsPlaying;
+        StopInternal();
+        if (wasPlaying)
+        {
+            Stopped?.Invoke();
+        }
+    }
+
+    private void StopInternal()
     {
         cts?.Cancel();
         cts = null;
@@ -120,7 +137,11 @@ public sealed class StreamPlayer : IDisposable
                 if (waveOut is null && bufferedWaveProvider.BufferedDuration.TotalSeconds > 2)
                 {
                     waveOut = new WaveOutEvent { Volume = volume };
-                    waveOut.Init(bufferedWaveProvider);
+                    // NLayer's decoder outputs 32-bit IEEE float; convert to 16-bit PCM
+                    // before handing off to WaveOutEvent — Wine's DirectSound/WASAPI
+                    // shims have historically accepted IEEE float Init()/Play() calls
+                    // without erroring, then produced no audible output at all.
+                    waveOut.Init(new WaveFloatTo16Provider(bufferedWaveProvider));
                     waveOut.Play();
                 }
             }
@@ -138,6 +159,7 @@ public sealed class StreamPlayer : IDisposable
                 ? $"HTTP {(int?)httpEx.StatusCode} fetching stream"
                 : ex.Message;
             Error?.Invoke(ex);
+            Stopped?.Invoke();
         }
     }
 

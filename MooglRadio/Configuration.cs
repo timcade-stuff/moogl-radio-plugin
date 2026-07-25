@@ -20,4 +20,7 @@ public sealed class Configuration : IPluginConfiguration
 
     /// <summary>Window background opacity, 0 (invisible) to 1 (opaque).</summary>
     public float BackgroundAlpha { get; set; } = 0.9f;
+
+    /// <summary>Mutes the game's own BGM while the radio plays, restoring it on stop.</summary>
+    public bool MuteGameBgm { get; set; } = true;
 }

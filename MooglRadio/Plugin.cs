@@ -15,6 +15,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly ICommandManager commandManager;
     private readonly IPluginLog log;
     private readonly MainWindow mainWindow;
+    private readonly BgmMuter bgmMuter;
 
     public Configuration Configuration { get; }
     public WindowSystem WindowSystem { get; } = new("MooglRadio");
@@ -24,11 +25,13 @@ public sealed class Plugin : IDalamudPlugin
     public Plugin(
         IDalamudPluginInterface pluginInterface,
         ICommandManager commandManager,
-        IPluginLog log)
+        IPluginLog log,
+        IGameConfig gameConfig)
     {
         this.pluginInterface = pluginInterface;
         this.commandManager = commandManager;
         this.log = log;
+        this.bgmMuter = new BgmMuter(gameConfig, log);
 
         Configuration = this.pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
@@ -46,6 +49,14 @@ public sealed class Plugin : IDalamudPlugin
 
         StreamPlayer.Volume = Configuration.Volume;
         StreamPlayer.Error += ex => this.log.Error(ex, "MOOGLradio playback error");
+        StreamPlayer.Started += () =>
+        {
+            if (Configuration.MuteGameBgm)
+            {
+                bgmMuter.MuteForRadio();
+            }
+        };
+        StreamPlayer.Stopped += bgmMuter.RestoreGameBgm;
 
         mainWindow = new MainWindow(this);
         WindowSystem.AddWindow(mainWindow);
@@ -62,6 +73,27 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     public void SaveConfiguration() => pluginInterface.SavePluginConfig(Configuration);
+
+    /// <summary>Updates the mute-game-BGM setting, applying it immediately if the radio is already playing.</summary>
+    public void SetMuteGameBgm(bool value)
+    {
+        Configuration.MuteGameBgm = value;
+        SaveConfiguration();
+
+        if (!StreamPlayer.IsPlaying)
+        {
+            return;
+        }
+
+        if (value)
+        {
+            bgmMuter.MuteForRadio();
+        }
+        else
+        {
+            bgmMuter.RestoreGameBgm();
+        }
+    }
 
     private void OnCommand(string command, string args)
     {

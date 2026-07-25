@@ -146,6 +146,12 @@ public sealed class MainWindow : Window
             plugin.SaveConfiguration();
         }
 
+        var muteGameBgm = config.MuteGameBgm;
+        if (ImGui.Checkbox("Mute game music while playing", ref muteGameBgm))
+        {
+            plugin.SetMuteGameBgm(muteGameBgm);
+        }
+
         ImGui.EndPopup();
     }
 }
