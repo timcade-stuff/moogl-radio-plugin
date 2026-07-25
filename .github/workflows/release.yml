@@ -5,13 +5,9 @@ name: Release
 # repo.json's DownloadLink* fields point at releases/latest/download/MooglRadio.zip,
 # so this is what makes the custom Dalamud repo stay up to date automatically.
 #
-# UNVERIFIED: this hasn't been run for real yet (no local Dalamud install to
-# test against, see README.md). Things most likely to need adjusting once you
-# run it for real:
-#  - the .NET SDK version below (net10.0-windows may need a newer/preview SDK)
-#  - the glob used to locate the DalamudPackager zip output
-#  - the Dalamud distrib zip URL/layout (goatcorp.github.io/dalamud-distrib),
-#    if goatcorp changes their CDN structure
+# Verified 2026-07-25: builds green end-to-end against Dalamud API level 13.
+# Note DalamudPackager names its output latest.zip (not <AssemblyName>.zip),
+# nested under bin/Release/MooglRadio/ — the locate step below renames it.
 
 on:
   push:
@@ -49,21 +45,18 @@ jobs:
       - name: Build (Release)
         run: dotnet build MooglRadio/MooglRadio.csproj -c Release --no-restore -v:normal
 
-      - name: List build output (debug)
-        if: always()
-        shell: pwsh
-        run: Get-ChildItem -Path MooglRadio\bin -Recurse | Select-Object FullName
-
       - name: Locate packaged zip
         id: locate_zip
         shell: pwsh
         run: |
-          $zip = Get-ChildItem -Path MooglRadio/bin/Release -Recurse -Filter "MooglRadio.zip" | Select-Object -First 1
+          $zip = Get-ChildItem -Path MooglRadio/bin/Release -Recurse -Filter "latest.zip" | Select-Object -First 1
           if (-not $zip) {
-            Write-Error "MooglRadio.zip not found under MooglRadio/bin/Release — check DalamudPackager output path."
+            Write-Error "latest.zip not found under MooglRadio/bin/Release — check DalamudPackager output path."
             exit 1
           }
-          echo "zip_path=$($zip.FullName)" >> $env:GITHUB_OUTPUT
+          $dest = Join-Path $zip.Directory.FullName "MooglRadio.zip"
+          Copy-Item -Path $zip.FullName -Destination $dest -Force
+          echo "zip_path=$dest" >> $env:GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
