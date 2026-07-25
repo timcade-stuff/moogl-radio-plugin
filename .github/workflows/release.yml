@@ -5,9 +5,13 @@ name: Release
 # repo.json's DownloadLink* fields point at releases/latest/download/MooglRadio.zip,
 # so this is what makes the custom Dalamud repo stay up to date automatically.
 #
-# Verified 2026-07-25: builds green end-to-end against Dalamud API level 13.
-# Note DalamudPackager names its output latest.zip (not <AssemblyName>.zip),
+# Verified 2026-07-25: this workflow runs green end-to-end (build, package,
+# GitHub Release with a working download URL) — see v0.1.0. Note
+# DalamudPackager names its output latest.zip (not <AssemblyName>.zip),
 # nested under bin/Release/MooglRadio/ — the locate step below renames it.
+# Not independently verified: whether DalamudApiLevel 13 in repo.json is
+# actually current, or whether the plugin loads/runs correctly in-game —
+# CI only proves it compiles against Dalamud's latest published assemblies.
 
 on:
   push:
@@ -43,7 +47,7 @@ jobs:
         run: dotnet restore MooglRadio/MooglRadio.csproj
 
       - name: Build (Release)
-        run: dotnet build MooglRadio/MooglRadio.csproj -c Release --no-restore -v:normal
+        run: dotnet build MooglRadio/MooglRadio.csproj -c Release --no-restore
 
       - name: Locate packaged zip
         id: locate_zip

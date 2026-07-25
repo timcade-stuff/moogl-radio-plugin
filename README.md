@@ -14,21 +14,23 @@ subcommands. No DJ/admin functionality here; that lives on the website.
   can't be clicked to reach its own gear-icon settings, this chat command
   is the way back out if you get stuck in click-through mode.
 
-## Status: early scaffold, not yet build-verified in-game
+## Status: builds and packages cleanly in CI, not yet run in-game
 
-This was scaffolded and probe-built in an environment with no local
-Dalamud/XIVLauncher install, so it's been validated as far as tooling
-allows and no further:
+This was scaffolded and developed in an environment with no local
+Dalamud/XIVLauncher install:
 
 - ✅ `Dalamud.NET.Sdk/15.0.0` resolves, restores, and the csproj is
   structurally valid (confirmed via `dotnet build`).
 - ✅ Target framework is `net10.0-windows` (set by the SDK itself, don't
   override it).
-- ❌ Not compiled against real Dalamud/ImGui/FFXIVClientStructs
-  assemblies — that requires an actual Dalamud install (see below).
-- ❌ Not run in-game. Playback (NAudio/ACM mp3 decoding), the ImGui
-  binding namespace, and the DalamudPackager packaging step are all
-  unverified.
+- ✅ Compiles against real Dalamud/ImGui/FFXIVClientStructs assemblies —
+  verified in CI (`.github/workflows/release.yml`, downloads Dalamud's
+  published assemblies from `goatcorp.github.io/dalamud-distrib`).
+- ✅ `DalamudPackager` packages a working `MooglRadio.zip` and CI publishes
+  it to GitHub Releases automatically on tag push (see `v0.1.0`).
+- ❌ Not run in-game. Playback (NAudio/ACM mp3 decoding) and the ImGui
+  binding namespace/glyph rendering are unverified — CI proves it
+  compiles, not that it works at runtime.
 
 Things to double-check when you pick this up for real:
 
@@ -52,13 +54,9 @@ Things to double-check when you pick this up for real:
    playback silently fails, swap in the pure-C# decoder from the
    `NLayer.NAudioSupport` NuGet package instead (drop-in replacement,
    same constructor shape).
-4. **`DalamudPackager` target** — left commented out in
-   `MooglRadio.csproj` pending confirmation of the current task
-   parameters against a real build. Uncomment and adjust once you can
-   build for real.
-5. **`RepoUrl` / download links** — `MooglRadio/MooglRadio.json` and
-   `repo.json` have `REPLACE_ME` placeholders; fill in once this has a
-   real GitHub repo and releases.
+4. **`DalamudPackager` target** — enabled and confirmed working via CI
+   (produces `MooglRadio.zip`), but only compile-verified, not run
+   in-game.
 
 ## Building
 
@@ -83,12 +81,22 @@ Requires:
 dotnet build MooglRadio/MooglRadio.csproj
 ```
 
-## Testing in-game
+## Installing (custom plugin repo)
 
-1. In Dalamud Settings → Experimental, add this repo's `repo.json` raw
-   URL as a custom plugin repo (once published), or use "Load DevPlugin"
-   pointed at the built DLL for local iteration.
-2. `/mooglradio` toggles the player window.
+1. In-game or in the Dalamud plugin installer, go to
+   **Settings → Experimental → Custom Plugin Repositories** and add:
+   ```
+   https://raw.githubusercontent.com/timcade-stuff/moogl-radio-plugin/main/repo.json
+   ```
+2. Search "MOOGLradio" in the plugin installer and install it. Updates
+   after that are automatic — CI publishes a new release (and this
+   repo.json always points at `releases/latest`) whenever a `v*` tag is
+   pushed.
+3. `/mooglradio` toggles the player window; see the Commands section
+   above for lock/click-through subcommands.
+
+For local dev iteration instead, use "Load DevPlugin" pointed at the
+built DLL.
 
 ## Eventual goal
 
