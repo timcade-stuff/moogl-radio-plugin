@@ -1,5 +1,5 @@
 using NAudio.Wave;
-using NAudio.Wave.Compression;
+using NLayer.NAudioSupport;
 
 namespace MooglRadio.Services;
 
@@ -9,13 +9,12 @@ namespace MooglRadio.Services;
 /// frames off the response stream, decompress into a BufferedWaveProvider,
 /// and start playback once a couple of seconds are buffered.
 ///
-/// DRAFT / untested in-game. In particular, <see cref="AcmMp3FrameDecompressor"/>
-/// uses the Windows ACM mp3 codec, which may not be present in every Wine
-/// prefix (relevant here since FFXIV runs under Wine on Mac/Linux, not
-/// just native Windows). If playback fails silently under Wine, swap
-/// this for the pure-C# decoder from the `NLayer.NAudioSupport` NuGet
-/// package (`NLayer.NAudioSupport.Mp3FrameDecompressor`), which has no
-/// native codec dependency — same constructor shape as AcmMp3FrameDecompressor.
+/// Uses NLayer's pure-C# decoder rather than NAudio's ACM-based one:
+/// AcmMp3FrameDecompressor calls into the Windows ACM codec, which
+/// doesn't exist under Wine (confirmed in-game — it threw
+/// NotSupportedException, since FFXIV on Mac runs under Wine, not
+/// native Windows). NLayer.NAudioSupport.Mp3FrameDecompressor has the
+/// same constructor shape and no native codec dependency.
 /// </summary>
 public sealed class StreamPlayer : IDisposable
 {
@@ -105,7 +104,7 @@ public sealed class StreamPlayer : IDisposable
                         frame.ChannelMode == ChannelMode.Mono ? 1 : 2,
                         frame.FrameLength,
                         frame.BitRate);
-                    decompressor = new AcmMp3FrameDecompressor(waveFormat);
+                    decompressor = new Mp3FrameDecompressor(waveFormat);
                     bufferedWaveProvider = new BufferedWaveProvider(decompressor.OutputFormat)
                     {
                         BufferDuration = TimeSpan.FromSeconds(20),

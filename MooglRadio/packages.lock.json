@@ -28,6 +28,16 @@
           "NAudio.WinMM": "2.3.0"
         }
       },
+      "NLayer.NAudioSupport": {
+        "type": "Direct",
+        "requested": "[2.0.1, )",
+        "resolved": "2.0.1",
+        "contentHash": "KA+x8ukKPSq6cyNK4CSKiPw8Wl2RNNbME/t8fohqnldHcaHAmj8+zKMu3L5eAsM+ewhBPFQHC8qVIGXM/C83PQ==",
+        "dependencies": {
+          "NAudio.Core": "2.0.0",
+          "NLayer": "2.0.1"
+        }
+      },
       "NAudio.Asio": {
         "type": "Transitive",
         "resolved": "2.3.0",
@@ -72,6 +82,11 @@
         "dependencies": {
           "NAudio.Core": "2.3.0"
         }
+      },
+      "NLayer": {
+        "type": "Transitive",
+        "resolved": "2.0.1",
+        "contentHash": "0nhnDRx98u7zXXbPIF11QYYupOOOQ9W22eqoyQyXn/gitRXbf9zAK8YfxyqS1Ix+TSqJv8EPNSk3VkDb7fChKw=="
       }
     }
   }

@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <AssemblyName>MooglRadio</AssemblyName>
-    <Version>0.1.3.0</Version>
+    <Version>0.1.4.0</Version>
     <Description>Listen to MOOGLradio, the FFXIV-themed internet radio station, in-game.</Description>
     <Company>MOOGLradio</Company>
     <Product>MooglRadio</Product>
@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.3.0" />
+    <PackageReference Include="NLayer.NAudioSupport" Version="2.0.1" />
   </ItemGroup>
 
   <ItemGroup>

@@ -49,14 +49,12 @@ Things to double-check when you pick this up for real:
    with no error shown — this is why the plugin wasn't appearing
    in-game). Re-check this value whenever Dalamud ships a new API level
    and the plugin needs a corresponding release.
-3. **MP3 decoding under Wine** — `Services/StreamPlayer.cs` uses
-   NAudio's `AcmMp3FrameDecompressor`, which relies on the Windows ACM
-   codec. FFXIV runs under Wine on Mac/Linux (confirmed via the
-   `DalamudLibPath` for macOS pointing at `.../XIV on Mac/dalamud/...`),
-   and Wine prefixes don't always have an mp3 ACM codec registered. If
-   playback silently fails, swap in the pure-C# decoder from the
-   `NLayer.NAudioSupport` NuGet package instead (drop-in replacement,
-   same constructor shape).
+3. **MP3 decoding under Wine** — ~~fixed 2026-07-25~~. `AcmMp3FrameDecompressor`
+   called into the Windows ACM codec, which doesn't exist under Wine;
+   confirmed in-game as a `NotSupportedException` ("Specified method is
+   not supported") the moment Play was pressed. Swapped for
+   `NLayer.NAudioSupport.Mp3FrameDecompressor` — same constructor shape,
+   pure C# decode, no native codec dependency.
 4. **`DalamudPackager` target** — enabled and confirmed working via CI
    (produces `MooglRadio.zip`), but only compile-verified, not run
    in-game.
