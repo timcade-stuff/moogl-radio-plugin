@@ -8,17 +8,22 @@ using MooglRadio.Models;
 namespace MooglRadio.Windows;
 
 /// <summary>
-/// Compact, fixed-size now-playing widget. Not resizable by design — the
-/// goal is a small always-there strip, not a full player UI. Visual
-/// language (dark glass card, purple/blue accent, pill toggles) matches
-/// the moogl.fm site mockup, see <see cref="Theme"/> and <see cref="Icons"/>.
-/// Pin/click-through live in a gear-icon popup since a fully click-through
-/// window can't be clicked to reach its own settings (see Plugin.OnCommand
-/// for the chat fallback that unlocks it from outside the window).
+/// Compact, fixed-width now-playing widget (height auto-fits its content
+/// via <see cref="ImGuiWindowFlags.AlwaysAutoResize"/> so layout changes
+/// can't clip content against a stale hardcoded size). Visual language
+/// (dark glass card, purple/blue accent, pill toggles) matches the
+/// moogl.fm site mockup, see <see cref="Theme"/> and <see cref="Icons"/>.
+///
+/// Click-through (<see cref="Configuration.ClickThrough"/>) disables all
+/// window input via <see cref="ImGuiWindowFlags.NoInputs"/>, which would
+/// otherwise strand the user with no way to reach the gear icon again.
+/// Holding Ctrl while hovering the window temporarily lifts that flag for
+/// the frame (see <see cref="WantsClickThroughOverride"/>) — the chat
+/// command fallback in Plugin.OnCommand still exists as a backup.
 /// </summary>
 public sealed class MainWindow : Window
 {
-    private static readonly Vector2 WindowSize = new(320, 190);
+    private const float WindowWidth = 320f;
     private static readonly Vector2 ArtSize = new(60, 60);
     private const float CardPadding = 14f;
     private const float TextColumnWidth = 172f;
@@ -27,12 +32,15 @@ public sealed class MainWindow : Window
 
     private readonly Plugin plugin;
 
+    private Vector2 lastWindowMin;
+    private Vector2 lastWindowMax;
+    private bool hasWindowRect;
+    private bool clickThroughOverrideActive;
+
     public MainWindow(Plugin plugin)
         : base("MOOGLradio###MooglRadioMainWindow")
     {
         this.plugin = plugin;
-        Size = WindowSize;
-        SizeCondition = ImGuiCond.Always;
     }
 
     public override void PreDraw()
@@ -40,6 +48,7 @@ public sealed class MainWindow : Window
         var config = plugin.Configuration;
 
         var flags = ImGuiWindowFlags.NoResize
+            | ImGuiWindowFlags.AlwaysAutoResize
             | ImGuiWindowFlags.NoScrollbar
             | ImGuiWindowFlags.NoScrollWithMouse
             | ImGuiWindowFlags.NoCollapse;
@@ -49,13 +58,20 @@ public sealed class MainWindow : Window
             flags |= ImGuiWindowFlags.NoMove;
         }
 
-        if (config.ClickThrough)
+        clickThroughOverrideActive = config.ClickThrough && WantsClickThroughOverride();
+        if (config.ClickThrough && !clickThroughOverrideActive)
         {
             flags |= ImGuiWindowFlags.NoInputs;
         }
 
         Flags = flags;
-        ImGui.SetNextWindowBgAlpha(config.BackgroundAlpha);
+
+        // The rounded card drawn in Draw() is the only visible background —
+        // it reads config.BackgroundAlpha itself. The native window bg sits
+        // behind it and would otherwise show through as unrounded corners,
+        // so keep it fully transparent rather than tying it to opacity too.
+        ImGui.SetNextWindowBgAlpha(0f);
+        ImGui.SetNextWindowSizeConstraints(new Vector2(WindowWidth, 0), new Vector2(WindowWidth, float.MaxValue));
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
     }
 
@@ -64,20 +80,50 @@ public sealed class MainWindow : Window
         ImGui.PopStyleVar();
     }
 
+    /// <summary>
+    /// True when the user is holding Ctrl with the mouse over where the
+    /// window was last frame — checked in <see cref="PreDraw"/>, before
+    /// this frame's window rect exists, so it necessarily lags one frame.
+    /// That's imperceptible in practice and avoids needing input state
+    /// from a window that (this frame) may itself be ignoring input.
+    /// </summary>
+    private bool WantsClickThroughOverride()
+    {
+        if (!hasWindowRect)
+        {
+            return false;
+        }
+
+        var ctrlHeld = ImGui.IsKeyDown(ImGuiKey.LeftCtrl) || ImGui.IsKeyDown(ImGuiKey.RightCtrl);
+        if (!ctrlHeld)
+        {
+            return false;
+        }
+
+        var mouse = ImGui.GetIO().MousePos;
+        return mouse.X >= lastWindowMin.X && mouse.X <= lastWindowMax.X
+            && mouse.Y >= lastWindowMin.Y && mouse.Y <= lastWindowMax.Y;
+    }
+
     public override void Draw()
     {
         var config = plugin.Configuration;
         var nowPlaying = plugin.NowPlayingClient.Latest;
         var track = nowPlaying?.Track;
 
-        // WindowPadding is zeroed in PreDraw, so content starts exactly at
-        // the window's content origin (just below the native title bar)
-        // and spans its full width/height — no gaps, no overflow.
-        var cardMin = ImGui.GetCursorScreenPos();
-        var cardMax = cardMin + ImGui.GetContentRegionAvail();
+        lastWindowMin = ImGui.GetWindowPos();
+        lastWindowMax = lastWindowMin + ImGui.GetWindowSize();
+        hasWindowRect = true;
+
+        // The card's bottom-right extent depends on this frame's content
+        // (marquee lines, error text, etc.), so draw content into channel 1
+        // first, measure it, then paint the card into channel 0 behind it —
+        // rather than guessing a fixed card size up front and clipping
+        // whatever doesn't fit (see the cut-off play button this replaced).
         var dl = ImGui.GetWindowDrawList();
-        dl.AddRectFilled(cardMin, cardMax, Theme.U32(Theme.BgCard), Theme.CardRounding);
-        dl.AddRect(cardMin, cardMax, Theme.U32(Theme.BorderColor), Theme.CardRounding);
+        var cardMin = ImGui.GetCursorScreenPos();
+        dl.ChannelsSplit(2);
+        dl.ChannelsSetCurrent(1);
 
         ImGui.SetCursorScreenPos(cardMin + new Vector2(CardPadding, CardPadding));
         ImGui.BeginGroup();
@@ -96,7 +142,7 @@ public sealed class MainWindow : Window
         if (plugin.StreamPlayer.LastError is { } playError)
         {
             ImGui.Dummy(new Vector2(1, 4));
-            ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + WindowSize.X - CardPadding * 2);
+            ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + WindowWidth - CardPadding * 2);
             ImGui.TextColored(Theme.ErrorColor, $"Playback error: {playError}");
             ImGui.PopTextWrapPos();
         }
@@ -105,9 +151,23 @@ public sealed class MainWindow : Window
         DrawTransportRow(config);
 
         ImGui.Dummy(new Vector2(1, 10));
-        DrawFooterRow();
+        DrawFooterRow(config);
 
         ImGui.EndGroup();
+        var groupMax = ImGui.GetItemRectMax();
+        var cardMax = groupMax + new Vector2(CardPadding, CardPadding);
+
+        // Zero-size marker so AlwaysAutoResize's tracked content extent
+        // includes the card's bottom/right padding, not just the group.
+        ImGui.SetCursorScreenPos(cardMax);
+        ImGui.Dummy(Vector2.Zero);
+
+        dl.ChannelsSetCurrent(0);
+        var cardBg = new Vector4(Theme.BgCard.X, Theme.BgCard.Y, Theme.BgCard.Z, config.BackgroundAlpha);
+        var borderColor = clickThroughOverrideActive ? Theme.AccentSecondary : Theme.BorderColor;
+        dl.AddRectFilled(cardMin, cardMax, Theme.U32(cardBg), Theme.CardRounding);
+        dl.AddRect(cardMin, cardMax, Theme.U32(borderColor), Theme.CardRounding);
+        dl.ChannelsMerge();
 
         DrawSettingsPopup(config);
     }
@@ -132,7 +192,7 @@ public sealed class MainWindow : Window
         // Local x is relative to the window's left edge (WindowPadding is
         // zeroed for this window), so this lines the icons up flush with
         // the card's right inset regardless of the badge's width.
-        ImGui.SameLine(WindowSize.X - CardPadding - iconSize.X * 2 - 4);
+        ImGui.SameLine(WindowWidth - CardPadding - iconSize.X * 2 - 4);
 
         if (Widgets.IconButton("pin", iconSize, (dl2, c, s, col) => Icons.Pin(dl2, c, s, col, config.Locked), config.Locked))
         {
@@ -278,7 +338,7 @@ public sealed class MainWindow : Window
         ImGui.Dummy(new Vector2(20, 20));
         ImGui.SameLine();
 
-        var sliderWidth = WindowSize.X - CardPadding * 2 - buttonSize - 14 - 20 - 8;
+        var sliderWidth = WindowWidth - CardPadding * 2 - buttonSize - 14 - 20 - 8;
         DrawSlider("##volume", config.Volume, sliderWidth, out var newVolume, Theme.AccentSecondary);
         if (newVolume != config.Volume)
         {
@@ -290,13 +350,23 @@ public sealed class MainWindow : Window
         ImGui.EndGroup();
     }
 
-    private void DrawFooterRow()
+    private void DrawFooterRow(Configuration config)
     {
         ImGui.PushStyleColor(ImGuiCol.Separator, Theme.BorderColor);
         ImGui.Separator();
         ImGui.PopStyleColor();
         ImGui.Dummy(new Vector2(1, 4));
-        ImGui.TextColored(Theme.TextMuted, "MOOGL Radio · moogl.fm");
+
+        if (config.ClickThrough)
+        {
+            ImGui.TextColored(
+                clickThroughOverrideActive ? Theme.AccentSecondary : Theme.TextMuted,
+                clickThroughOverrideActive ? "Click-through paused — release Ctrl to resume" : "Click-through on — hold Ctrl to interact");
+        }
+        else
+        {
+            ImGui.TextColored(Theme.TextMuted, "MOOGL Radio · moogl.fm");
+        }
     }
 
     /// <summary>
@@ -376,8 +446,8 @@ public sealed class MainWindow : Window
             ImGui.Dummy(new Vector2(1, 10));
 
             ToggleRow(
-                "Click-through when unfocused",
-                "Clicks pass to the game when not hovered",
+                "Click-through",
+                "Clicks pass to the game everywhere on the window",
                 config.ClickThrough,
                 v =>
                 {
@@ -387,7 +457,7 @@ public sealed class MainWindow : Window
 
             if (config.ClickThrough)
             {
-                ImGui.TextColored(Theme.TextMuted, "Use /mooglradio ct to undo");
+                ImGui.TextColored(Theme.TextMuted, "Hold Ctrl while hovering to interact, or /mooglradio ct");
                 ImGui.Dummy(new Vector2(1, 4));
             }
 
