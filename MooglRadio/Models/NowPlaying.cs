@@ -9,7 +9,8 @@ public sealed record NowPlaying(
     string? Block,
     NowPlayingTrack? Track,
     NowPlayingDj? Dj,
-    string StreamUrl);
+    string StreamUrl,
+    int? ListenerCount = null);
 
 /// <summary>
 /// ArtUrl is relative (e.g. "/api/now-playing/art") — prefix with the

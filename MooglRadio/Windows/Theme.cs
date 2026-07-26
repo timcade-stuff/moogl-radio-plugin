@@ -33,6 +33,11 @@ internal static class Theme
     public const float PillRounding = 999f;
 
     public static uint U32(Vector4 color) => ImGui.GetColorU32(color);
+
+    /// <summary>Scales a color's alpha by <paramref name="opacity"/> — used to make the
+    /// whole hand-drawn widget fade with the window's opacity setting, since raw
+    /// ImDrawList colors don't participate in ImGui's own style alpha.</summary>
+    public static Vector4 Fade(Vector4 color, float opacity) => new(color.X, color.Y, color.Z, color.W * opacity);
 }
 
 /// <summary>
@@ -174,7 +179,7 @@ internal static class Icons
 /// </summary>
 internal static class Widgets
 {
-    public static bool IconButton(string id, Vector2 size, Action<ImDrawListPtr, Vector2, float, uint> drawIcon, bool active = false)
+    public static bool IconButton(string id, Vector2 size, Action<ImDrawListPtr, Vector2, float, uint> drawIcon, bool active = false, float opacity = 1f)
     {
         ImGui.PushID(id);
         ImGui.InvisibleButton("##btn", size);
@@ -187,14 +192,14 @@ internal static class Widgets
 
         if (active)
         {
-            dl.AddRectFilled(min, max, Theme.U32(Theme.AccentMutedBg), 6f);
+            dl.AddRectFilled(min, max, Theme.U32(Theme.Fade(Theme.AccentMutedBg, opacity)), 6f);
         }
         else if (hovered)
         {
-            dl.AddRectFilled(min, max, Theme.U32(Theme.HoverBg), 6f);
+            dl.AddRectFilled(min, max, Theme.U32(Theme.Fade(Theme.HoverBg, opacity)), 6f);
         }
 
-        var iconColor = active ? Theme.U32(Theme.AccentSecondary) : Theme.U32(Theme.TextSecondary);
+        var iconColor = Theme.U32(Theme.Fade(active ? Theme.AccentSecondary : Theme.TextSecondary, opacity));
         drawIcon(dl, center, MathF.Min(size.X, size.Y), iconColor);
         ImGui.PopID();
         return clicked;
