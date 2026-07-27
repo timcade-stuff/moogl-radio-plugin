@@ -254,11 +254,27 @@ public sealed class MainWindow : Window
 
     private void DrawHeaderRow(Configuration config, NowPlaying? nowPlaying)
     {
+        // Precedence: a live DJ set outranks the scheduled block name (DJs
+        // go live mid-block), which outranks the bare "moogl.fm" fallback.
+        // Listener count, when the API has it, tags onto whichever of those
+        // is showing rather than replacing it.
+        string context;
+        if (nowPlaying?.Dj is not null)
+        {
+            context = $"Live · {nowPlaying.Dj.Name}";
+        }
+        else if (nowPlaying?.Block is { } block && !string.IsNullOrWhiteSpace(block))
+        {
+            context = block;
+        }
+        else
+        {
+            context = "moogl.fm";
+        }
+
         var badgeLabel = nowPlaying?.ListenerCount is { } count
-            ? $"{count} listening"
-            : nowPlaying?.Dj is not null
-                ? $"Live · {nowPlaying.Dj.Name}"
-                : "moogl.fm";
+            ? $"{context} · {count} listening"
+            : context;
         var textSize = ImGui.CalcTextSize(badgeLabel);
         var badgeSize = new Vector2(textSize.X + 22, 20);
         var badgeMin = ImGui.GetCursorScreenPos();
