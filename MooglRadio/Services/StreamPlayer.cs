@@ -209,7 +209,18 @@ public sealed class StreamPlayer : IDisposable
                     // NLayer's decoder outputs 32-bit IEEE float; convert to 16-bit PCM
                     // before handing off to the output device.
                     outputProvider = new WaveFloatTo16Provider(bufferedWaveProvider) { Volume = volume };
-                    waveOut = new WaveOutEvent();
+                    waveOut = new WaveOutEvent
+                    {
+                        // Default is 300ms x 2 buffers pre-queued to the OS ahead of
+                        // playback. StopInternal() zeros the volume before Stop(), but
+                        // that only affects samples not yet read — audio already queued
+                        // (scaled at the old volume) still plays out, which is the
+                        // "takes a second to stop" lag reported in-game. Shorter
+                        // latency shrinks that window; BufferedWaveProvider still holds
+                        // up to 20s of decoded audio ready to feed it, so this doesn't
+                        // reintroduce underrun risk from the network side.
+                        DesiredLatency = 100,
+                    };
                     waveOut.Init(outputProvider);
                     waveOut.Play();
                     Diagnostic?.Invoke($"Output initialized at frame {frameCount}, PlaybackState={waveOut.PlaybackState}");

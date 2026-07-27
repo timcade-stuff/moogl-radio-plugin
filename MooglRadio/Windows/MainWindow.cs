@@ -9,11 +9,13 @@ using MooglRadio.Models;
 namespace MooglRadio.Windows;
 
 /// <summary>
-/// Compact, fixed-width now-playing widget (height auto-fits its content
-/// via <see cref="ImGuiWindowFlags.AlwaysAutoResize"/> so layout changes
-/// can't clip content against a stale hardcoded size). Visual language
-/// (dark glass card, purple/blue accent, pill toggles) matches the
-/// moogl.fm site mockup, see <see cref="Theme"/> and <see cref="Icons"/>.
+/// Compact, fixed-width now-playing widget. Height is remeasured from
+/// content each frame and fed back into <c>SetNextWindowSize</c> the next
+/// frame (see <see cref="PreDraw"/>/<see cref="lastWindowHeight"/>) so
+/// layout changes can't clip content against a stale hardcoded size.
+/// Visual language (dark glass card, purple/blue accent, pill toggles)
+/// matches the moogl.fm site mockup, see <see cref="Theme"/> and
+/// <see cref="Icons"/>.
 ///
 /// Chrome is entirely custom — <see cref="ImGuiWindowFlags.NoTitleBar"/> is
 /// set and the header row draws its own pin/gear/close icons, since the
@@ -48,6 +50,13 @@ public sealed class MainWindow : Window
     private Vector2 lastWindowMax;
     private bool hasWindowRect;
     private bool clickThroughOverrideActive;
+    private bool wasDragging;
+
+    /// <summary>Last frame's measured total window height (width is always
+    /// pinned to <see cref="WindowWidth"/>). Fed back into SetNextWindowSize
+    /// each frame — see the comment in <see cref="PreDraw"/> for why this
+    /// replaced AlwaysAutoResize + size constraints.</summary>
+    private float lastWindowHeight = 220f;
 
     /// <summary>Current frame's opacity multiplier (== config.BackgroundAlpha),
     /// forced to 1 while the settings popup draws so it stays legible
@@ -58,6 +67,11 @@ public sealed class MainWindow : Window
         : base("MOOGLradio###MooglRadioMainWindow")
     {
         this.plugin = plugin;
+
+        // Esc is a common "close whatever's open" reflex in an MMO; a radio
+        // widget shouldn't disappear because of it — only the custom X
+        // button (see DrawHeaderRow) should close this window.
+        RespectCloseHotkey = false;
     }
 
     public override void PreDraw()
@@ -65,7 +79,6 @@ public sealed class MainWindow : Window
         var config = plugin.Configuration;
 
         var flags = ImGuiWindowFlags.NoResize
-            | ImGuiWindowFlags.AlwaysAutoResize
             | ImGuiWindowFlags.NoScrollbar
             | ImGuiWindowFlags.NoScrollWithMouse
             | ImGuiWindowFlags.NoCollapse
@@ -85,7 +98,26 @@ public sealed class MainWindow : Window
         // as an unrounded, unfaded square, so keep it fully transparent and
         // borderless instead.
         ImGui.SetNextWindowBgAlpha(0f);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(WindowWidth, 0), new Vector2(WindowWidth, float.MaxValue));
+
+        // AlwaysAutoResize + SetNextWindowSizeConstraints previously handled
+        // sizing, but constraints are a *range*: when a frame's content (e.g.
+        // a shorter badge string) measured narrower than WindowWidth, ImGui
+        // picked a width below it rather than holding exactly WindowWidth —
+        // and the card, still drawn assuming the full 320px, got clipped
+        // square by that narrower real window edge (the reported cut-off
+        // right corner). Forcing the exact size every frame removes the
+        // ambiguity; height just trails last frame's measured content by
+        // one frame, same lag AlwaysAutoResize had anyway.
+        ImGui.SetNextWindowSize(new Vector2(WindowWidth, lastWindowHeight), ImGuiCond.Always);
+
+        if (config.WindowPosX is { } x && config.WindowPosY is { } y)
+        {
+            // FirstUseEver only seeds the position once per ImGui context
+            // (i.e. once per game session) — it won't fight the user's own
+            // dragging on subsequent frames.
+            ImGui.SetNextWindowPos(new Vector2(x, y), ImGuiCond.FirstUseEver);
+        }
+
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 0f);
     }
@@ -143,13 +175,25 @@ public sealed class MainWindow : Window
         // No native title bar left to drag by, so implement it by hand:
         // click-dragging anywhere on the window (that isn't itself an
         // active widget, e.g. the volume slider) moves it, unless locked.
-        if (!config.Locked
+        var dragging = !config.Locked
             && ImGui.IsWindowHovered()
             && !ImGui.IsAnyItemActive()
-            && ImGui.IsMouseDragging(ImGuiMouseButton.Left))
+            && ImGui.IsMouseDragging(ImGuiMouseButton.Left);
+
+        if (dragging)
         {
             ImGui.SetWindowPos(ImGui.GetWindowPos() + ImGui.GetMouseDragDelta(ImGuiMouseButton.Left));
             ImGui.ResetMouseDragDelta(ImGuiMouseButton.Left);
+            wasDragging = true;
+        }
+        else if (wasDragging)
+        {
+            // Persist once, on release, rather than every frame mid-drag.
+            wasDragging = false;
+            var pos = ImGui.GetWindowPos();
+            config.WindowPosX = pos.X;
+            config.WindowPosY = pos.Y;
+            plugin.SaveConfiguration();
         }
 
         // The card's bottom-right extent depends on this frame's content
@@ -194,10 +238,10 @@ public sealed class MainWindow : Window
         var groupMax = ImGui.GetItemRectMax();
         var cardMax = groupMax + new Vector2(CardPadding, CardPadding);
 
-        // Zero-size marker so AlwaysAutoResize's tracked content extent
-        // includes the card's bottom/right padding, not just the group.
-        ImGui.SetCursorScreenPos(cardMax);
-        ImGui.Dummy(Vector2.Zero);
+        // Padding=0 and no title bar means cardMin == window position exactly,
+        // so this height is the exact total window height to request next
+        // frame via SetNextWindowSize in PreDraw (see the comment there).
+        lastWindowHeight = cardMax.Y - cardMin.Y;
 
         dl.ChannelsSetCurrent(0);
         var borderColor = clickThroughOverrideActive ? Theme.AccentSecondary : Theme.BorderColor;
