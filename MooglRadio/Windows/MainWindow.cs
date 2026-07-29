@@ -332,6 +332,25 @@ public sealed class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// A horizontal rule bounded to exactly WindowWidth - CardPadding*2,
+    /// unlike ImGui.Separator() (used safely in the auto-sized settings
+    /// popup, but NOT here): Separator spans the window's full work rect,
+    /// which — since WindowPadding is zeroed for full-bleed card drawing —
+    /// is the entire window width, not our CardPadding-inset content
+    /// width. That widened this group's measured bounding box past the
+    /// window's forced size, and the excess (plus the corner rounding)
+    /// got clipped square by the window edge — the reported cut-off,
+    /// unrounded right side.
+    /// </summary>
+    private void DrawDivider()
+    {
+        var pos = ImGui.GetCursorScreenPos();
+        var width = WindowWidth - CardPadding * 2;
+        ImGui.GetWindowDrawList().AddLine(pos, pos + new Vector2(width, 0), C(Theme.BorderColor), 1f);
+        ImGui.Dummy(new Vector2(width, 1));
+    }
+
     private void DrawArt()
     {
         var texture = plugin.AlbumArtService.Texture;
@@ -480,9 +499,7 @@ public sealed class MainWindow : Window
 
     private void DrawFooterRow(Configuration config)
     {
-        ImGui.PushStyleColor(ImGuiCol.Separator, CV(Theme.BorderColor));
-        ImGui.Separator();
-        ImGui.PopStyleColor();
+        DrawDivider();
         ImGui.Dummy(new Vector2(1, 4));
 
         if (config.ClickThrough)
