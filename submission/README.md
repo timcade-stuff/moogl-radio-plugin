@@ -8,16 +8,11 @@ the plugin's real state.
 
 ## To submit
 
-1. Update `manifest.toml`'s `commit` field to the actual commit hash
+1. ~~Add `images/icon.png`~~ — done, hand-made, 512x512.
+2. Update `manifest.toml`'s `commit` field to the actual commit hash
    being submitted (whatever `git rev-parse HEAD` is at submission
-   time — the one below is just a snapshot from when this draft was
-   written).
-2. Add `images/icon.png` — square, 64-512px. Not yet made; the design
-   assets in `MOOGL Radio design.zip` (moogle mascot) are a source to
-   crop from, but the mascot's wings overlap the neighboring letters in
-   the wordmark closely enough that a clean isolated crop needs a human
-   eye, not a mechanical one. Hand-made is explicitly preferred by the
-   Dalamud team over an AI-generated icon.
+   time — the one in there now is just a snapshot from when this draft
+   was written).
 3. Fork (or use GitHub's web editor on) `goatcorp/DalamudPluginsD17`,
    create `testing/live/MooglRadio/manifest.toml` and
    `testing/live/MooglRadio/images/icon.png` from this folder, and open
