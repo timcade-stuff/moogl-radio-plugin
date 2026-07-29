@@ -1,6 +1,6 @@
 # MooglRadio (Dalamud plugin)
 
-In-game player for [MOOGLradio](https://github.com/REPLACE_ME/moogl-radio)
+In-game player for [MOOGLradio](https://moogl.fm)
 — play/pause, volume, cover art, and scrolling now-playing track/DJ info,
 in a compact, fixed-size ImGui window. Background opacity is adjustable,
 and the window can be pinned (no drag) and set click-through via the gear
@@ -180,9 +180,22 @@ dotnet build MooglRadio/MooglRadio.csproj
 For local dev iteration instead, use "Load DevPlugin" pointed at the
 built DLL.
 
-## Eventual goal
+## Submitting to the official Dalamud plugin repo
 
-Submit to the official Dalamud plugin repo, which has its own
-submission process/guidelines (manifest requirements, review). Treat
-that as a post-v1 milestone, not a blocker for getting this working for
-yourself first.
+In progress — see `submission/manifest.toml` for the draft manifest
+that goes into a PR against
+[DalamudPluginsD17](https://github.com/goatcorp/DalamudPluginsD17)
+(`testing/live/MooglRadio/`). Still needed before that PR can go up:
+
+- `submission/images/icon.png` (square, 64-512px) — not yet made.
+- Update the `commit` field in the manifest to whatever commit is
+  actually being submitted (it's a snapshot, not auto-updating).
+- Disclose AI tool usage in the PR description per the
+  [AI usage policy](https://dalamud.dev/plugin-publishing/ai-policy/) —
+  significant portions of this plugin were built with AI assistance
+  (Claude), under human direction and in-game testing throughout (see
+  the confirmation log above). Say so plainly in the PR.
+
+## License
+
+[MIT](LICENSE)

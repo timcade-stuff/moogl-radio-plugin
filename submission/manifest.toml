@@ -1,0 +1,11 @@
+# Draft manifest for a PR against goatcorp/DalamudPluginsD17.
+# Destination in that repo: testing/live/MooglRadio/manifest.toml
+# See submission/README.md for the full checklist before opening that PR.
+
+[plugin]
+repository = "https://github.com/timcade-stuff/moogl-radio-plugin.git"
+# Snapshot only — update to the actual commit being submitted.
+commit = "f01000109d5aaf917dcf3a6b8dc4aa07bb4904b9"
+owners = ["timcade-stuff"]
+project_path = "MooglRadio"
+changelog = "Initial submission: in-game MOOGLradio player — play/pause, volume, cover art, scrolling now-playing info, adjustable window opacity/lock/click-through."
