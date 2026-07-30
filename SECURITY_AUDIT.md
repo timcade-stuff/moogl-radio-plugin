@@ -292,9 +292,16 @@ These are now permanent, not one-off:
    explicit CI step so it's visible in build logs, not just a silent
    restore-time warning.
 3. **[Gitleaks](https://github.com/gitleaks/gitleaks) v8.30.1** — installed
-   locally via Homebrew for this audit's baseline scan, and wired into CI
-   via `gitleaks/gitleaks-action` (pinned to a commit SHA) so every future
-   push/PR gets scanned for committed secrets.
+   locally via Homebrew for this audit's baseline scan, and wired into CI by
+   downloading the CLI release binary directly (checksum-verified against
+   the release's published `checksums.txt`) rather than via the
+   `gitleaks/gitleaks-action` wrapper. That wrapper's v3 "breaking update"
+   requires a paid `GITLEAKS_LICENSE` for repos under a GitHub
+   organization — this repo is under one (`timcade-stuff`) — even though
+   the underlying CLI remains free and MIT-licensed; running the CLI
+   directly avoids that gate. (Discovered when the first `security.yml` run
+   on `v0.1.18` failed with "is an organization. License key is required."
+   — fixed in the same release.)
 4. **`.github/workflows/security.yml`** (new) — runs on every push and PR
    (the repo previously had CI *only* on release-tag pushes). Two jobs:
    dependency+analyzer build (restore in locked mode, build, list
