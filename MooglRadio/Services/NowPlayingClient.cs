@@ -17,7 +17,11 @@ public sealed class NowPlayingClient : IDisposable
         PropertyNameCaseInsensitive = true,
     };
 
-    private readonly HttpClient httpClient = new();
+    private readonly HttpClient httpClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(10),
+        MaxResponseContentBufferSize = 64 * 1024, // now-playing payload is a handful of short fields
+    };
     private readonly PeriodicTimer timer = new(TimeSpan.FromSeconds(15));
     private CancellationTokenSource? cts;
     private Task? pollTask;

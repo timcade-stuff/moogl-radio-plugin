@@ -38,6 +38,12 @@
           "NLayer": "2.0.1"
         }
       },
+      "SecurityCodeScan.VS2019": {
+        "type": "Direct",
+        "requested": "[5.6.7, )",
+        "resolved": "5.6.7",
+        "contentHash": "WIE9RJswdSc2j+rLz2gW6U+gMUjMHzY2j7C/CL8/R2olXNM/+twarfMnWqm+rZodDBvaYDApJyxM8mVYf9FGrQ=="
+      },
       "NAudio.Asio": {
         "type": "Transitive",
         "resolved": "2.3.0",

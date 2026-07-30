@@ -4,6 +4,15 @@ namespace MooglRadio.Models;
 /// Mirrors the moogl-radio control-plane API's GET /api/now-playing
 /// contract (see ARCHITECTURE.md in the moogl-radio repo).
 /// </summary>
+/// <param name="StreamUrl">
+/// Part of the API contract but currently unused for playback —
+/// <see cref="Services.StreamPlayer"/> always plays the locally configured
+/// <see cref="Configuration.StreamUrl"/>, not this field. If a future
+/// change ever wires this server-supplied value into actual playback, it
+/// must first be validated the same way <see cref="Configuration.StreamUrl"/>
+/// is (absolute URI, https scheme) before being handed to
+/// <see cref="Services.StreamPlayer.Play"/> — don't fetch it unvalidated.
+/// </param>
 public sealed record NowPlaying(
     string Status,
     string? Block,

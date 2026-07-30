@@ -46,7 +46,13 @@ public sealed class StreamPlayer : IDisposable
 {
     private const int ReadBufferSize = 16384 * 4;
 
-    private readonly HttpClient httpClient = new();
+    // No HttpClient.Timeout here (deliberately): unlike the other two
+    // HttpClients in this plugin, this one is a long-lived stream read
+    // (HttpCompletionOption.ResponseHeadersRead, then bytes for as long as
+    // playback continues) rather than a short request/response cycle — a
+    // finite Timeout would cancel live playback partway through. Stop()
+    // cancellation is handled explicitly via the CancellationTokenSource below.
+    private readonly HttpClient httpClient = new() { Timeout = Timeout.InfiniteTimeSpan };
     private CancellationTokenSource? cts;
     private WaveOutEvent? waveOut;
     private WaveFloatTo16Provider? outputProvider;

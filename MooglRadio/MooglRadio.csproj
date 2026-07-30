@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <AssemblyName>MooglRadio</AssemblyName>
-    <Version>0.1.17.0</Version>
+    <Version>0.1.18.0</Version>
     <Description>Listen to MOOGLradio, the FFXIV-themed internet radio station, in-game.</Description>
     <Company>MOOGLradio</Company>
     <Product>MooglRadio</Product>
@@ -17,6 +17,16 @@
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.3.0" />
     <PackageReference Include="NLayer.NAudioSupport" Version="2.0.1" />
+  </ItemGroup>
+
+  <!-- Roslyn security analyzer: flags injection, insecure-deserialization,
+       SSRF-shaped, and other OWASP-style patterns on every build. Analyzer
+       only — contributes no runtime assembly to the shipped plugin. -->
+  <ItemGroup>
+    <PackageReference Include="SecurityCodeScan.VS2019" Version="5.6.7">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

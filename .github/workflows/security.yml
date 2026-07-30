@@ -1,0 +1,56 @@
+name: Security
+
+# Runs the security checks documented in SECURITY_AUDIT.md on every push and
+# PR (unlike release.yml, which only runs on tag pushes): dependency
+# vulnerability audit, the SecurityCodeScan Roslyn analyzer (via the normal
+# build), and a gitleaks secret scan. All third-party actions are pinned to
+# commit SHAs (see SECURITY_AUDIT.md, "CI supply chain" finding).
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-and-analyzer-scan:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+
+      # Same as release.yml: Dalamud.NET.Sdk needs Dalamud's own assemblies
+      # on disk to build against; CI has no game install, so fetch them from
+      # Dalamud's distribution CDN.
+      - name: Download Dalamud
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile dalamud-latest.zip
+          Expand-Archive -Force -Path dalamud-latest.zip -DestinationPath "$env:AppData\XIVLauncher\addon\Hooks\dev"
+
+      - name: Restore (locked mode)
+        run: dotnet restore MooglRadio/MooglRadio.csproj --locked-mode
+
+      # Surfaces both the built-in NuGetAudit warnings and the
+      # SecurityCodeScan analyzer's diagnostics in the build log.
+      - name: Build
+        run: dotnet build MooglRadio/MooglRadio.csproj -c Release --no-restore
+
+      - name: List vulnerable packages
+        run: dotnet list MooglRadio/MooglRadio.csproj package --vulnerable --include-transitive
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # gitleaks needs full history, not just the latest commit
+
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

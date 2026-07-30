@@ -15,7 +15,11 @@ namespace MooglRadio.Services;
 /// </summary>
 public sealed class AlbumArtService(ITextureProvider textureProvider, IPluginLog log) : IDisposable
 {
-    private readonly HttpClient httpClient = new();
+    private readonly HttpClient httpClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(10),
+        MaxResponseContentBufferSize = 8 * 1024 * 1024, // cover art is a small image; bound worst-case memory use
+    };
     private string? currentUrl;
     private IDalamudTextureWrap? currentTexture;
     private CancellationTokenSource? cts;
@@ -24,6 +28,12 @@ public sealed class AlbumArtService(ITextureProvider textureProvider, IPluginLog
 
     public void UpdateFor(string apiBaseUrl, string? artUrl)
     {
+        if (artUrl is not null && !IsSameOriginRelativePath(artUrl))
+        {
+            log.Warning($"MOOGLradio: ignoring non-relative ArtUrl from now-playing API: {artUrl}");
+            artUrl = null;
+        }
+
         var fullUrl = artUrl is null ? null : $"{apiBaseUrl.TrimEnd('/')}{artUrl}";
         if (fullUrl == currentUrl)
         {
@@ -72,4 +82,14 @@ public sealed class AlbumArtService(ITextureProvider textureProvider, IPluginLog
         currentTexture?.Dispose();
         httpClient.Dispose();
     }
+
+    /// <summary>
+    /// True only for a plain path-and-optionally-query relative reference
+    /// (e.g. "/api/now-playing/art") — rejects absolute URLs ("https://...")
+    /// and protocol-relative ones ("//evil.example/x"), so a compromised or
+    /// malicious now-playing API can't redirect this fetch off the
+    /// configured host via the ArtUrl field.
+    /// </summary>
+    private static bool IsSameOriginRelativePath(string artUrl) =>
+        artUrl.StartsWith('/') && !artUrl.StartsWith("//", StringComparison.Ordinal) && !artUrl.Contains("://", StringComparison.Ordinal);
 }

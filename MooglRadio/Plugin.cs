@@ -10,6 +10,8 @@ namespace MooglRadio;
 public sealed class Plugin : IDalamudPlugin
 {
     private const string CommandName = "/mooglradio";
+    private const string DefaultApiBaseUrl = "https://moogl.fm";
+    private const string DefaultStreamUrl = "https://moogl.fm/listen/mooglradio.mp3";
 
     private readonly IDalamudPluginInterface pluginInterface;
     private readonly ICommandManager commandManager;
@@ -44,9 +46,36 @@ public sealed class Plugin : IDalamudPlugin
         // endpoints once, so existing installs don't stay stuck on 404s.
         if (Configuration.Version < 2)
         {
-            Configuration.ApiBaseUrl = "https://moogl.fm";
-            Configuration.StreamUrl = "https://moogl.fm/listen/mooglradio.mp3";
+            Configuration.ApiBaseUrl = DefaultApiBaseUrl;
+            Configuration.StreamUrl = DefaultStreamUrl;
             Configuration.Version = 2;
+            this.pluginInterface.SavePluginConfig(Configuration);
+        }
+
+        // Defense in depth: ApiBaseUrl/StreamUrl aren't exposed for editing
+        // in the plugin's own settings UI, but the saved config is still a
+        // plain JSON file on disk — nothing stops it being hand-edited (or
+        // written by something else with file access) to downgrade to
+        // http:// or repoint at an arbitrary host. Reject anything that
+        // isn't a well-formed https:// URL before it's ever used to make a
+        // request, falling back to the known-good default instead.
+        var configChanged = false;
+        if (!IsValidHttpsUrl(Configuration.ApiBaseUrl))
+        {
+            this.log.Warning($"MOOGLradio: config ApiBaseUrl '{Configuration.ApiBaseUrl}' is not a valid https URL, resetting to default");
+            Configuration.ApiBaseUrl = DefaultApiBaseUrl;
+            configChanged = true;
+        }
+
+        if (!IsValidHttpsUrl(Configuration.StreamUrl))
+        {
+            this.log.Warning($"MOOGLradio: config StreamUrl '{Configuration.StreamUrl}' is not a valid https URL, resetting to default");
+            Configuration.StreamUrl = DefaultStreamUrl;
+            configChanged = true;
+        }
+
+        if (configChanged)
+        {
             this.pluginInterface.SavePluginConfig(Configuration);
         }
 
@@ -79,6 +108,11 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     public void SaveConfiguration() => pluginInterface.SavePluginConfig(Configuration);
+
+    private static bool IsValidHttpsUrl(string? url) =>
+        !string.IsNullOrWhiteSpace(url) &&
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+        uri.Scheme == Uri.UriSchemeHttps;
 
     /// <summary>Updates the mute-game-BGM setting, applying it immediately if the radio is already playing.</summary>
     public void SetMuteGameBgm(bool value)
