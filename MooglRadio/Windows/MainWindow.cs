@@ -90,6 +90,15 @@ public sealed class MainWindow : Window
             flags |= ImGuiWindowFlags.NoInputs;
         }
 
+        // Without a title bar, ImGui's own window-move logic treats the
+        // entire body as a drag handle unless NoMove is set — that native
+        // move ran alongside the hand-rolled one in Draw() and ignored
+        // config.Locked, since only the hand-rolled path checked it.
+        if (config.Locked)
+        {
+            flags |= ImGuiWindowFlags.NoMove;
+        }
+
         Flags = flags;
 
         // The rounded card drawn in Draw() is the only visible background —
@@ -238,6 +247,13 @@ public sealed class MainWindow : Window
         var groupMax = ImGui.GetItemRectMax();
         var cardMax = groupMax + new Vector2(CardPadding, CardPadding);
 
+        // Belt-and-suspenders: if some future bit of content still measures
+        // wider than WindowWidth despite the per-widget bounds above, clamp
+        // the card rect to the window's real edge rather than letting it
+        // get flat-clipped there — a flat clip silently eats the rounded
+        // corner, which is exactly the bug this is guarding against.
+        cardMax.X = MathF.Min(cardMax.X, cardMin.X + WindowWidth);
+
         // Padding=0 and no title bar means cardMin == window position exactly,
         // so this height is the exact total window height to request next
         // frame via SetNextWindowSize in PreDraw (see the comment there).
@@ -276,7 +292,15 @@ public sealed class MainWindow : Window
             ? $"{context} · {count} listening"
             : context;
         var textSize = ImGui.CalcTextSize(badgeLabel);
-        var badgeSize = new Vector2(textSize.X + 22, 20);
+
+        // A live DJ name or block title of arbitrary length shouldn't be
+        // able to blow the badge past the card's right edge — that widened
+        // the group's measured bounding box past WindowWidth in the same
+        // way the old unbounded Separator did (see DrawDivider), and the
+        // excess got clipped square by the window edge, losing the card's
+        // right-side rounding entirely.
+        var maxBadgeWidth = WindowWidth - CardPadding * 2 - (24 * 3 + 4 * 2 + 8);
+        var badgeSize = new Vector2(MathF.Min(textSize.X + 22, maxBadgeWidth), 20);
         var badgeMin = ImGui.GetCursorScreenPos();
         var dl = ImGui.GetWindowDrawList();
 
@@ -284,7 +308,9 @@ public sealed class MainWindow : Window
         dl.AddRect(badgeMin, badgeMin + badgeSize, C(Theme.AccentMutedBorder), Theme.PillRounding);
         var dotCenter = badgeMin + new Vector2(11, badgeSize.Y / 2);
         dl.AddCircleFilled(dotCenter, 3f, C(Theme.Success), 12);
+        dl.PushClipRect(badgeMin, badgeMin + badgeSize, true);
         dl.AddText(badgeMin + new Vector2(18, (badgeSize.Y - textSize.Y) / 2), C(Theme.AccentSecondary), badgeLabel);
+        dl.PopClipRect();
 
         ImGui.Dummy(badgeSize);
 
@@ -502,6 +528,11 @@ public sealed class MainWindow : Window
         DrawDivider();
         ImGui.Dummy(new Vector2(1, 4));
 
+        // Wrapped for the same reason as the playback-error text above: an
+        // unbounded line here can measure wider than the card, pushing the
+        // group's bounding box past WindowWidth and flat-clipping the
+        // card's right-side rounding.
+        ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + WindowWidth - CardPadding * 2);
         if (config.ClickThrough)
         {
             ImGui.TextColored(
@@ -512,6 +543,7 @@ public sealed class MainWindow : Window
         {
             ImGui.TextColored(CV(Theme.TextMuted), "MOOGL Radio · moogl.fm");
         }
+        ImGui.PopTextWrapPos();
     }
 
     /// <summary>

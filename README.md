@@ -187,7 +187,7 @@ that goes into a PR against
 [DalamudPluginsD17](https://github.com/goatcorp/DalamudPluginsD17)
 (`testing/live/MooglRadio/`). Still needed before that PR can go up:
 
-- `submission/images/icon.png` (square, 64-512px) — not yet made.
+- `submission/images/icon.png` (square, 64-512px) — art by Ciera Killo
 - Update the `commit` field in the manifest to whatever commit is
   actually being submitted (it's a snapshot, not auto-updating).
 - Disclose AI tool usage in the PR description per the
@@ -199,3 +199,9 @@ that goes into a PR against
 ## License
 
 [MIT](LICENSE)
+
+## AI Disclosure
+This project is built in a copilot mode - the LLM does most of the coding, with human interaction at every step of the journey. Testing is all done by a human, with automations for builds/releases and security scans built as GHA pipelines within the repository.
+
+### Mitigations
+In an attempt to mitigate security concerns that are always at the heart of any project built with LLMs, I've included a variety of code scans to try to ensure the integrity of the project as much as possible. Since data is collected from public endpoints via GET and no data is sent to the server using POST, the attack surface is limited. See the `SECURITY_AUDIT.md` file for my findings and the remediations taken therein.
