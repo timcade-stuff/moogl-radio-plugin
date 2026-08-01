@@ -401,20 +401,22 @@ public sealed class MainWindow : Window
         var dimColor = C(Theme.TextMuted);
         var errorColor = C(Theme.ErrorColor);
 
-        ImGui.Dummy(new Vector2(1, 2));
-
         if (track is not null)
         {
+            // No leading Dummy here — the title's top must line up exactly
+            // with the album art's top (both start at their group's cursor
+            // position with zero offset).
             DrawMarquee(track.Title, textColor);
+            DrawMarquee(track.Artist, dimColor);
 
-            // Album rides on the same line as the artist rather than its own
-            // row — DrawMarquee already scrolls whatever doesn't fit, so a
-            // combined "Artist · Album" string gets that for free instead of
-            // needing a third stacked line.
-            var artistLine = string.IsNullOrWhiteSpace(track.Album)
-                ? track.Artist
-                : $"{track.Artist} · {track.Album}";
-            DrawMarquee(artistLine, dimColor);
+            // Album gets its own marquee line below the artist rather than
+            // sharing one via "Artist · Album" — long combined strings made
+            // the marquee scroll through both at once, which was harder to
+            // read than two independently-scrolling lines.
+            if (!string.IsNullOrWhiteSpace(track.Album))
+            {
+                DrawMarquee(track.Album, dimColor);
+            }
 
             // Null (no fixed track length, e.g. a live DJ set) is skipped
             // rather than shown as "LIVE" — the header badge already says
@@ -574,6 +576,11 @@ public sealed class MainWindow : Window
     /// accent-colored fill), driven by a plain click/drag InvisibleButton
     /// instead of ImGui's default slider visuals. Colors are faded by the
     /// current <see cref="opacity"/> (1 while the settings popup is open).
+    /// The track is inset by <c>thumbRadius</c> on each side so the thumb
+    /// travels entirely within <paramref name="width"/> — without the inset,
+    /// a value near 1.0 pushed the thumb's circle past the reserved width,
+    /// eating into the caller's right-hand padding (e.g. the transport row
+    /// sizing its slider to end flush with the card's right inset).
     /// </summary>
     private void DrawSlider(string id, float value, float width, float controlHeight, out float newValue, Vector4 fillColor)
     {
@@ -586,20 +593,22 @@ public sealed class MainWindow : Window
         var active = ImGui.IsItemActive();
         newValue = value;
 
+        var trackWidth = width - thumbRadius * 2;
+
         if (active)
         {
             var rect = ImGui.GetItemRectMin();
-            var pct = (ImGui.GetIO().MousePos.X - rect.X) / width;
+            var pct = (ImGui.GetIO().MousePos.X - rect.X - thumbRadius) / trackWidth;
             newValue = Math.Clamp(pct, 0f, 1f);
         }
 
         var dl = ImGui.GetWindowDrawList();
-        var trackMin = pos + new Vector2(0, (size.Y - trackHeight) / 2);
-        var trackMax = trackMin + new Vector2(width, trackHeight);
+        var trackMin = pos + new Vector2(thumbRadius, (size.Y - trackHeight) / 2);
+        var trackMax = trackMin + new Vector2(trackWidth, trackHeight);
         dl.AddRectFilled(trackMin, trackMax, C(Theme.TrackBg), trackHeight / 2);
-        dl.AddRectFilled(trackMin, trackMin + new Vector2(width * newValue, trackHeight), C(fillColor), trackHeight / 2);
+        dl.AddRectFilled(trackMin, trackMin + new Vector2(trackWidth * newValue, trackHeight), C(fillColor), trackHeight / 2);
 
-        var thumbCenter = new Vector2(trackMin.X + width * newValue, pos.Y + size.Y / 2);
+        var thumbCenter = new Vector2(trackMin.X + trackWidth * newValue, pos.Y + size.Y / 2);
         dl.AddCircleFilled(thumbCenter, thumbRadius, C(Theme.TextPrimary), 16);
         ImGui.PopID();
     }
