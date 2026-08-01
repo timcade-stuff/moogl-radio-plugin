@@ -159,6 +159,45 @@ internal static class Icons
         dl.PathStroke(color, ImDrawFlags.None, 1.4f);
     }
 
+    /// <summary>Picture-in-picture glyph (outer frame + inset rect) used for the
+    /// mini-player toggle — a small rect "docked" in a larger one reads as
+    /// switching to a compact view without needing separate on/off icons.</summary>
+    public static void MiniPlayerToggle(ImDrawListPtr dl, Vector2 center, float size, uint color)
+    {
+        var outerW = size * 0.62f;
+        var outerH = size * 0.46f;
+        var outerMin = center - new Vector2(outerW / 2, outerH / 2);
+        var outerMax = center + new Vector2(outerW / 2, outerH / 2);
+        dl.AddRect(outerMin, outerMax, color, 2f, ImDrawFlags.None, 1.4f);
+
+        var innerW = size * 0.26f;
+        var innerH = size * 0.2f;
+        var innerMax = outerMax - new Vector2(3f, 3f);
+        var innerMin = innerMax - new Vector2(innerW, innerH);
+        dl.AddRectFilled(innerMin, innerMax, color, 1.5f);
+    }
+
+    /// <summary>Headset glyph for the mini player's listener count, matching
+    /// the mockup's headphone icon (arc "band" over two ear-cup rects).</summary>
+    public static void Headset(ImDrawListPtr dl, Vector2 center, float size, uint color)
+    {
+        var r = size * 0.34f;
+        const float thickness = 1.6f;
+        dl.PathArcTo(center + new Vector2(0, size * 0.06f), r, MathF.PI, MathF.PI * 2, 16);
+        dl.PathStroke(color, ImDrawFlags.None, thickness);
+
+        var cupSize = new Vector2(size * 0.16f, size * 0.24f);
+        var cupY = center.Y + size * 0.06f;
+        dl.AddRectFilled(
+            new Vector2(center.X - r - cupSize.X * 0.3f, cupY),
+            new Vector2(center.X - r - cupSize.X * 0.3f + cupSize.X, cupY + cupSize.Y),
+            color, 2f);
+        dl.AddRectFilled(
+            new Vector2(center.X + r - cupSize.X * 0.7f, cupY),
+            new Vector2(center.X + r - cupSize.X * 0.7f + cupSize.X, cupY + cupSize.Y),
+            color, 2f);
+    }
+
     public static void MusicNote(ImDrawListPtr dl, Vector2 center, float size, uint color)
     {
         var r = size * 0.11f;
@@ -203,6 +242,34 @@ internal static class Widgets
         drawIcon(dl, center, MathF.Min(size.X, size.Y), iconColor);
         ImGui.PopID();
         return clicked;
+    }
+
+    /// <summary>
+    /// Thin rounded track + fill bar for the current track's playback
+    /// progress. Purely decorative (no drag/click handling) — progress is
+    /// derived client-side from the now-playing poll, not something the
+    /// user can seek. <paramref name="progress"/> null means "unknown"
+    /// (live DJ set, or a file whose duration couldn't be read) and draws
+    /// an empty track rather than guessing a fill amount.
+    /// </summary>
+    public static void ProgressBar(float width, float height, float? progress, Vector4 trackColor, Vector4 fillColor, float opacity)
+    {
+        var pos = ImGui.GetCursorScreenPos();
+        var dl = ImGui.GetWindowDrawList();
+        var rounding = height / 2;
+
+        dl.AddRectFilled(pos, pos + new Vector2(width, height), Theme.U32(Theme.Fade(trackColor, opacity)), rounding);
+
+        if (progress is { } pct)
+        {
+            var fillWidth = width * Math.Clamp(pct, 0f, 1f);
+            if (fillWidth > 0)
+            {
+                dl.AddRectFilled(pos, pos + new Vector2(fillWidth, height), Theme.U32(Theme.Fade(fillColor, opacity)), rounding);
+            }
+        }
+
+        ImGui.Dummy(new Vector2(width, height));
     }
 
     public static bool ToggleSwitch(string id, bool value)

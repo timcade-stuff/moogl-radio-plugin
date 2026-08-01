@@ -2,6 +2,7 @@ using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using MooglRadio.Models;
 using MooglRadio.Services;
 using MooglRadio.Windows;
 
@@ -16,8 +17,20 @@ public sealed class Plugin : IDalamudPlugin
     private readonly IDalamudPluginInterface pluginInterface;
     private readonly ICommandManager commandManager;
     private readonly IPluginLog log;
+    private readonly IChatGui chatGui;
     private readonly MainWindow mainWindow;
     private readonly BgmMuter bgmMuter;
+
+    /// <summary>Identity of the last track a chat notification was printed for, so
+    /// <see cref="OnNowPlayingUpdated"/> only fires on an actual change, not every poll.</summary>
+    private string? lastNotifiedTrackKey;
+
+    /// <summary>Last block title a chat notification was printed for. See <see cref="lastNotifiedTrackKey"/>.</summary>
+    private string? lastNotifiedBlock;
+
+    /// <summary>Suppresses notifications for the state already in effect when the plugin loads/reconnects,
+    /// so the first poll doesn't print a "change" for whatever was already playing.</summary>
+    private bool hasSeenFirstNowPlaying;
 
     public Configuration Configuration { get; }
     public WindowSystem WindowSystem { get; } = new("MooglRadio");
@@ -30,11 +43,13 @@ public sealed class Plugin : IDalamudPlugin
         ICommandManager commandManager,
         IPluginLog log,
         IGameConfig gameConfig,
-        ITextureProvider textureProvider)
+        ITextureProvider textureProvider,
+        IChatGui chatGui)
     {
         this.pluginInterface = pluginInterface;
         this.commandManager = commandManager;
         this.log = log;
+        this.chatGui = chatGui;
         this.bgmMuter = new BgmMuter(gameConfig, log);
         this.AlbumArtService = new AlbumArtService(textureProvider, log);
 
@@ -92,13 +107,14 @@ public sealed class Plugin : IDalamudPlugin
         StreamPlayer.Stopped += bgmMuter.RestoreGameBgm;
 
         NowPlayingClient.Updated += np => AlbumArtService.UpdateFor(Configuration.ApiBaseUrl, np.Track?.ArtUrl);
+        NowPlayingClient.Updated += OnNowPlayingUpdated;
 
         mainWindow = new MainWindow(this);
         WindowSystem.AddWindow(mainWindow);
 
         this.commandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Toggle the MOOGLradio player window. Subcommands: lock, unlock, ct (toggle click-through).",
+            HelpMessage = "Toggle the MOOGLradio player window. Subcommands: lock, unlock, ct (toggle click-through), mini (toggle mini player).",
         });
 
         this.pluginInterface.UiBuilder.Draw += WindowSystem.Draw;
@@ -135,6 +151,46 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
+    /// <summary>Prints chat notifications for track/block changes, per <see cref="Configuration.ChatNotifyTrackChange"/>
+    /// and <see cref="Configuration.ChatNotifyBlockChange"/>. Compares against the last-notified state rather than
+    /// trusting every poll to represent a change, since <see cref="NowPlayingClient"/> fires Updated on each poll
+    /// regardless of whether the payload actually changed.</summary>
+    private void OnNowPlayingUpdated(NowPlaying nowPlaying)
+    {
+        var suppress = !hasSeenFirstNowPlaying;
+        hasSeenFirstNowPlaying = true;
+
+        var track = nowPlaying.Track;
+        var trackKey = track is null ? null : $"{track.Title} {track.Artist} {track.Album}";
+
+        if (Configuration.ChatNotifyTrackChange
+            && track is not null
+            && trackKey != lastNotifiedTrackKey
+            && !suppress)
+        {
+            chatGui.Print($"MOOGL Radio: {track.Title} by {track.Artist} on {track.Album}");
+        }
+
+        lastNotifiedTrackKey = trackKey;
+
+        var block = string.IsNullOrWhiteSpace(nowPlaying.Block) ? null : nowPlaying.Block;
+
+        if (Configuration.ChatNotifyBlockChange && block != lastNotifiedBlock && !suppress)
+        {
+            if (lastNotifiedBlock is not null)
+            {
+                chatGui.Print($"MOOGL Radio: {lastNotifiedBlock} had ended");
+            }
+
+            if (block is not null)
+            {
+                chatGui.Print($"MOOGL Radio: {block} has started");
+            }
+        }
+
+        lastNotifiedBlock = block;
+    }
+
     private void OnCommand(string command, string args)
     {
         switch (args.Trim().ToLowerInvariant())
@@ -152,6 +208,10 @@ public sealed class Plugin : IDalamudPlugin
                 Configuration.ClickThrough = !Configuration.ClickThrough;
                 SaveConfiguration();
                 break;
+            case "mini":
+                Configuration.MiniPlayer = !Configuration.MiniPlayer;
+                SaveConfiguration();
+                break;
             default:
                 mainWindow.Toggle();
                 break;
@@ -163,6 +223,7 @@ public sealed class Plugin : IDalamudPlugin
         pluginInterface.UiBuilder.Draw -= WindowSystem.Draw;
         WindowSystem.RemoveAllWindows();
         commandManager.RemoveHandler(CommandName);
+        NowPlayingClient.Updated -= OnNowPlayingUpdated;
         StreamPlayer.Dispose();
         NowPlayingClient.Dispose();
         AlbumArtService.Dispose();

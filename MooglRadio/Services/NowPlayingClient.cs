@@ -55,6 +55,32 @@ public sealed class NowPlayingClient : IDisposable
         return Math.Max(0, (int)Math.Round(remainingAtPoll - elapsed));
     }
 
+    /// <summary>
+    /// Fraction of the current track played so far (0..1), derived from
+    /// <see cref="GetRemainingSeconds"/> and <see cref="NowPlaying.DurationSeconds"/>
+    /// rather than tracked separately — elapsed = duration - remaining, both
+    /// already tick locally between polls. Null whenever either input is
+    /// null: both go null together for a live DJ set (no fixed length), and
+    /// DurationSeconds alone can be null if ID3 tag reading failed for that
+    /// file even though a remaining-seconds countdown exists — that's
+    /// "unknown length", not divide-by-zero territory, so it's treated the
+    /// same as no progress to show.
+    /// </summary>
+    public float? GetProgress()
+    {
+        if (Latest?.DurationSeconds is not { } duration || duration <= 0)
+        {
+            return null;
+        }
+
+        if (GetRemainingSeconds() is not { } remaining)
+        {
+            return null;
+        }
+
+        return Math.Clamp((duration - remaining) / (float)duration, 0f, 1f);
+    }
+
     public void Start(string apiBaseUrl)
     {
         Stop();

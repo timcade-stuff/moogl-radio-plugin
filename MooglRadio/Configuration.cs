@@ -24,6 +24,15 @@ public sealed class Configuration : IPluginConfiguration
     /// <summary>Mutes the game's own BGM while the radio plays, restoring it on stop.</summary>
     public bool MuteGameBgm { get; set; } = true;
 
+    /// <summary>Shows the compact single-row mini player instead of the full card layout.</summary>
+    public bool MiniPlayer { get; set; }
+
+    /// <summary>Prints a chat message whenever the currently playing track changes.</summary>
+    public bool ChatNotifyTrackChange { get; set; }
+
+    /// <summary>Prints a chat message whenever the current programming block starts or ends.</summary>
+    public bool ChatNotifyBlockChange { get; set; }
+
     /// <summary>Last on-screen position, restored on the next launch. Null until the
     /// window has been dragged at least once (then it just uses ImGui's default spot).</summary>
     public float? WindowPosX { get; set; }

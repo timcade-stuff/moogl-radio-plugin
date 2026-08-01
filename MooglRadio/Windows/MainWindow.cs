@@ -46,6 +46,8 @@ public sealed class MainWindow : Window
 
     private readonly Plugin plugin;
 
+    private readonly VolumePopover volumePopover = new();
+
     private Vector2 lastWindowMin;
     private Vector2 lastWindowMax;
     private bool hasWindowRect;
@@ -221,27 +223,14 @@ public sealed class MainWindow : Window
         DrawHeaderRow(config, nowPlaying);
         ImGui.Dummy(new Vector2(1, 10));
 
-        ImGui.BeginGroup();
-        DrawArt();
-        ImGui.EndGroup();
-        ImGui.SameLine();
-        ImGui.BeginGroup();
-        DrawNowPlayingText(nowPlaying, track);
-        ImGui.EndGroup();
-
-        if (plugin.StreamPlayer.LastError is { } playError)
+        if (config.MiniPlayer)
         {
-            ImGui.Dummy(new Vector2(1, 4));
-            ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + WindowWidth - CardPadding * 2);
-            ImGui.TextColored(CV(Theme.ErrorColor), $"Playback error: {playError}");
-            ImGui.PopTextWrapPos();
+            DrawMiniBody(config, nowPlaying, track);
         }
-
-        ImGui.Dummy(new Vector2(1, 12));
-        DrawTransportRow(config);
-
-        ImGui.Dummy(new Vector2(1, 10));
-        DrawFooterRow(config, nowPlaying);
+        else
+        {
+            DrawFullBody(config, nowPlaying, track);
+        }
 
         ImGui.EndGroup();
         var groupMax = ImGui.GetItemRectMax();
@@ -295,7 +284,7 @@ public sealed class MainWindow : Window
         // way the old unbounded Separator did (see DrawDivider), and the
         // excess got clipped square by the window edge, losing the card's
         // right-side rounding entirely.
-        var maxBadgeWidth = WindowWidth - CardPadding * 2 - (24 * 3 + 4 * 2 + 8);
+        var maxBadgeWidth = WindowWidth - CardPadding * 2 - (24 * 4 + 4 * 3 + 8);
         var badgeSize = new Vector2(MathF.Min(textSize.X + 22, maxBadgeWidth), 20);
         var badgeMin = ImGui.GetCursorScreenPos();
         var dl = ImGui.GetWindowDrawList();
@@ -312,7 +301,7 @@ public sealed class MainWindow : Window
 
         var iconSize = new Vector2(24, 24);
         const float iconGap = 4f;
-        var iconsWidth = iconSize.X * 3 + iconGap * 2;
+        var iconsWidth = iconSize.X * 4 + iconGap * 3;
         // Local x is relative to the window's left edge (WindowPadding is
         // zeroed for this window), so this lines the icons up flush with
         // the card's right inset regardless of the badge's width.
@@ -327,6 +316,19 @@ public sealed class MainWindow : Window
         if (ImGui.IsItemHovered())
         {
             ImGui.SetTooltip(config.Locked ? "Unlock window position" : "Lock window position");
+        }
+
+        ImGui.SameLine(0, iconGap);
+
+        if (Widgets.IconButton("mini-player", iconSize, Icons.MiniPlayerToggle, config.MiniPlayer, opacity))
+        {
+            config.MiniPlayer = !config.MiniPlayer;
+            plugin.SaveConfiguration();
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip(config.MiniPlayer ? "Switch to full player" : "Switch to mini player");
         }
 
         ImGui.SameLine(0, iconGap);
@@ -373,7 +375,9 @@ public sealed class MainWindow : Window
         ImGui.Dummy(new Vector2(width, 1));
     }
 
-    private void DrawArt()
+    private void DrawArt() => DrawArt(ArtSize);
+
+    private void DrawArt(Vector2 size)
     {
         var texture = plugin.AlbumArtService.Texture;
         var pos = ImGui.GetCursorScreenPos();
@@ -381,18 +385,18 @@ public sealed class MainWindow : Window
 
         if (texture is not null)
         {
-            dl.AddImageRounded(texture.Handle, pos, pos + ArtSize, Vector2.Zero, Vector2.One, C(new Vector4(1, 1, 1, 1)), 8f);
+            dl.AddImageRounded(texture.Handle, pos, pos + size, Vector2.Zero, Vector2.One, C(new Vector4(1, 1, 1, 1)), 8f);
         }
         else
         {
-            dl.AddRectFilled(pos, pos + ArtSize, C(Theme.TrackBg), 8f);
-            dl.AddRect(pos, pos + ArtSize, C(Theme.BorderColor), 8f);
-            Icons.MusicNote(dl, pos + ArtSize / 2, ArtSize.X, C(Theme.TextMuted));
+            dl.AddRectFilled(pos, pos + size, C(Theme.TrackBg), 8f);
+            dl.AddRect(pos, pos + size, C(Theme.BorderColor), 8f);
+            Icons.MusicNote(dl, pos + size / 2, size.X, C(Theme.TextMuted));
         }
 
         // Reserve the same layout space either way so text doesn't jump
         // around when art loads in or a track has none.
-        ImGui.Dummy(ArtSize);
+        ImGui.Dummy(size);
     }
 
     private void DrawNowPlayingText(NowPlaying? nowPlaying, NowPlayingTrack? track)
@@ -406,8 +410,8 @@ public sealed class MainWindow : Window
             // No leading Dummy here — the title's top must line up exactly
             // with the album art's top (both start at their group's cursor
             // position with zero offset).
-            DrawMarquee(track.Title, textColor);
-            DrawMarquee(track.Artist, dimColor);
+            DrawMarquee(track.Title, textColor, TextColumnWidth);
+            DrawMarquee(track.Artist, dimColor, TextColumnWidth);
 
             // Album gets its own marquee line below the artist rather than
             // sharing one via "Artist · Album" — long combined strings made
@@ -415,7 +419,7 @@ public sealed class MainWindow : Window
             // read than two independently-scrolling lines.
             if (!string.IsNullOrWhiteSpace(track.Album))
             {
-                DrawMarquee(track.Album, dimColor);
+                DrawMarquee(track.Album, dimColor, TextColumnWidth);
             }
 
             // Null (no fixed track length, e.g. a live DJ set) is skipped
@@ -428,7 +432,7 @@ public sealed class MainWindow : Window
         }
         else if (plugin.NowPlayingClient.LastError is { } metaError)
         {
-            DrawMarquee($"Can't reach MOOGLradio ({metaError})", errorColor);
+            DrawMarquee($"Can't reach MOOGLradio ({metaError})", errorColor, TextColumnWidth);
         }
         else
         {
@@ -437,29 +441,29 @@ public sealed class MainWindow : Window
     }
 
     /// <summary>
-    /// Draws a single line of text clipped to <see cref="TextColumnWidth"/>,
+    /// Draws a single line of text clipped to <paramref name="width"/>,
     /// scrolling it horizontally on a loop when it's too wide to fit —
     /// avoids the wrapped/cramped look of long titles in a window that's
     /// deliberately not resizable. Text that already fits just draws
     /// normally, no motion. Takes an already-opacity-baked color (see
     /// <see cref="C"/>) since it has no config/opacity access of its own.
     /// </summary>
-    private static void DrawMarquee(string text, uint colorU32)
+    private static void DrawMarquee(string text, uint colorU32, float width)
     {
         var drawList = ImGui.GetWindowDrawList();
         var pos = ImGui.GetCursorScreenPos();
         var lineHeight = ImGui.GetTextLineHeight();
         var textSize = ImGui.CalcTextSize(text);
 
-        ImGui.Dummy(new Vector2(TextColumnWidth, lineHeight));
+        ImGui.Dummy(new Vector2(width, lineHeight));
 
-        if (textSize.X <= TextColumnWidth)
+        if (textSize.X <= width)
         {
             drawList.AddText(pos, colorU32, text);
             return;
         }
 
-        drawList.PushClipRect(pos, pos + new Vector2(TextColumnWidth, lineHeight), true);
+        drawList.PushClipRect(pos, pos + new Vector2(width, lineHeight), true);
         var cycle = textSize.X + MarqueeGap;
         var offset = (float)(ImGui.GetTime() * MarqueeSpeedPxPerSecond % cycle);
         drawList.AddText(pos - new Vector2(offset, 0), colorU32, text);
@@ -467,14 +471,39 @@ public sealed class MainWindow : Window
         drawList.PopClipRect();
     }
 
+    private void DrawFullBody(Configuration config, NowPlaying? nowPlaying, NowPlayingTrack? track)
+    {
+        ImGui.BeginGroup();
+        DrawArt();
+        ImGui.EndGroup();
+        ImGui.SameLine();
+        ImGui.BeginGroup();
+        DrawNowPlayingText(nowPlaying, track);
+        ImGui.EndGroup();
+
+        if (plugin.StreamPlayer.LastError is { } playError)
+        {
+            ImGui.Dummy(new Vector2(1, 4));
+            ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + WindowWidth - CardPadding * 2);
+            ImGui.TextColored(CV(Theme.ErrorColor), $"Playback error: {playError}");
+            ImGui.PopTextWrapPos();
+        }
+
+        ImGui.Dummy(new Vector2(1, 12));
+        DrawTransportRow(config);
+
+        ImGui.Dummy(new Vector2(1, 10));
+        DrawFooterRow(config, nowPlaying);
+    }
+
     private void DrawTransportRow(Configuration config)
     {
         var dl = ImGui.GetWindowDrawList();
         const float buttonSize = 44f;
-        const float iconSize = 22f;
-        const float sliderHeight = 22f;
+        const float progressHeight = 6f;
+        const float volumeButtonSize = 30f;
         const float gapAfterButton = 16f;
-        const float gapAfterIcon = 8f;
+        const float gapBeforeVolume = 8f;
 
         var btnMin = ImGui.GetCursorScreenPos();
         ImGui.InvisibleButton("##playpause", new Vector2(buttonSize, buttonSize));
@@ -508,21 +537,29 @@ public sealed class MainWindow : Window
         ImGui.SameLine(0, gapAfterButton);
         ImGui.BeginGroup();
 
-        // Center the (shorter) speaker+slider row against the play button.
-        var innerHeight = MathF.Max(iconSize, sliderHeight);
-        var topOffset = (buttonSize - innerHeight) / 2;
-        if (topOffset > 0)
+        // Progress bar is thinner than the play button, so it's centered
+        // within a row as tall as the button rather than sitting flush
+        // with its top.
+        var progressTopOffset = (buttonSize - progressHeight) / 2;
+        if (progressTopOffset > 0)
         {
-            ImGui.Dummy(new Vector2(1, topOffset));
+            ImGui.Dummy(new Vector2(1, progressTopOffset));
         }
 
-        var speakerPos = ImGui.GetCursorScreenPos();
-        Icons.Speaker(dl, speakerPos + new Vector2(iconSize / 2, iconSize / 2), iconSize, C(Theme.TextMuted));
-        ImGui.Dummy(new Vector2(iconSize, iconSize));
-        ImGui.SameLine(0, gapAfterIcon);
+        var progressWidth = WindowWidth - CardPadding * 2 - buttonSize - gapAfterButton - volumeButtonSize - gapBeforeVolume;
+        Widgets.ProgressBar(progressWidth, progressHeight, plugin.NowPlayingClient.GetProgress(), Theme.TrackBg, Theme.AccentSecondary, opacity);
 
-        var sliderWidth = WindowWidth - CardPadding * 2 - buttonSize - gapAfterButton - iconSize - gapAfterIcon;
-        DrawSlider("##volume", config.Volume, sliderWidth, sliderHeight, out var newVolume, Theme.AccentSecondary);
+        ImGui.EndGroup();
+        ImGui.SameLine(0, gapBeforeVolume);
+        ImGui.BeginGroup();
+
+        var volumeTopOffset = (buttonSize - volumeButtonSize) / 2;
+        if (volumeTopOffset > 0)
+        {
+            ImGui.Dummy(new Vector2(1, volumeTopOffset));
+        }
+
+        var newVolume = volumePopover.Draw(volumeButtonSize, config.Volume, opacity);
         if (newVolume != config.Volume)
         {
             config.Volume = newVolume;
@@ -568,6 +605,172 @@ public sealed class MainWindow : Window
         {
             ImGui.SetCursorPos(new Vector2(WindowWidth - CardPadding - listenerWidth, cursorY));
             ImGui.TextColored(CV(Theme.TextMuted), listenerText);
+        }
+    }
+
+    /// <summary>
+    /// Compact single-row layout: art, track text and the play/pause
+    /// button share one row, a progress bar sits below it, and listener
+    /// count / time remaining / volume live in a footer row — mirrors the
+    /// mini player mockup rather than the full body's stacked art+text
+    /// then separate transport/footer rows.
+    /// </summary>
+    private void DrawMiniBody(Configuration config, NowPlaying? nowPlaying, NowPlayingTrack? track)
+    {
+        const float artSize = 44f;
+        const float playButtonSize = 34f;
+        const float gapArtText = 10f;
+        const float gapTextPlay = 10f;
+        var contentWidth = WindowWidth - CardPadding * 2;
+
+        var dl = ImGui.GetWindowDrawList();
+        var rowTop = ImGui.GetCursorScreenPos();
+
+        ImGui.BeginGroup();
+        DrawArt(new Vector2(artSize, artSize));
+        ImGui.EndGroup();
+
+        ImGui.SameLine(0, gapArtText);
+        var textWidth = contentWidth - artSize - gapArtText - playButtonSize - gapTextPlay;
+        ImGui.BeginGroup();
+        DrawMiniTrackText(track, textWidth);
+        ImGui.EndGroup();
+
+        ImGui.SameLine(WindowWidth - CardPadding - playButtonSize);
+        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (artSize - playButtonSize) / 2);
+
+        var btnMin = ImGui.GetCursorScreenPos();
+        ImGui.InvisibleButton("##mini-playpause", new Vector2(playButtonSize, playButtonSize));
+        var clicked = ImGui.IsItemClicked();
+        var center = btnMin + new Vector2(playButtonSize / 2, playButtonSize / 2);
+        dl.AddCircleFilled(center, playButtonSize / 2, C(Theme.AccentPrimary), 32);
+
+        var isPlaying = plugin.StreamPlayer.IsPlaying;
+        var glyphColor = C(new Vector4(1, 1, 1, 1));
+        if (isPlaying)
+        {
+            Icons.Pause(dl, center, playButtonSize, glyphColor);
+        }
+        else
+        {
+            Icons.Play(dl, center, playButtonSize, glyphColor);
+        }
+
+        if (clicked)
+        {
+            if (isPlaying)
+            {
+                plugin.StreamPlayer.Stop();
+            }
+            else
+            {
+                plugin.StreamPlayer.Play(config.StreamUrl);
+            }
+        }
+
+        // Art is the tallest element in the row (44px vs. the 34px play
+        // button); the row's real bottom is the art's, so realign the
+        // cursor there rather than trusting wherever the play button
+        // (offset downward to center it) left it.
+        ImGui.SetCursorScreenPos(rowTop + new Vector2(0, artSize));
+
+        if (plugin.StreamPlayer.LastError is { } playError)
+        {
+            ImGui.Dummy(new Vector2(1, 4));
+            ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + contentWidth);
+            ImGui.TextColored(CV(Theme.ErrorColor), $"Playback error: {playError}");
+            ImGui.PopTextWrapPos();
+        }
+
+        ImGui.Dummy(new Vector2(1, 12));
+        Widgets.ProgressBar(contentWidth, 4f, plugin.NowPlayingClient.GetProgress(), Theme.TrackBg, Theme.AccentSecondary, opacity);
+
+        ImGui.Dummy(new Vector2(1, 8));
+        DrawMiniFooterRow(config, nowPlaying);
+    }
+
+    private void DrawMiniTrackText(NowPlayingTrack? track, float width)
+    {
+        var textColor = C(Theme.TextPrimary);
+        var dimColor = C(Theme.TextMuted);
+        var errorColor = C(Theme.ErrorColor);
+
+        if (track is not null)
+        {
+            DrawMarquee(track.Title, textColor, width);
+            DrawMarquee(track.Artist, dimColor, width);
+
+            if (!string.IsNullOrWhiteSpace(track.Album))
+            {
+                DrawMarquee(track.Album, dimColor, width);
+            }
+        }
+        else if (plugin.NowPlayingClient.LastError is { } metaError)
+        {
+            DrawMarquee($"Can't reach MOOGLradio ({metaError})", errorColor, width);
+        }
+        else
+        {
+            ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + width);
+            ImGui.TextColored(CV(Theme.TextPrimary), "Loading...");
+            ImGui.PopTextWrapPos();
+        }
+    }
+
+    private void DrawMiniFooterRow(Configuration config, NowPlaying? nowPlaying)
+    {
+        const float iconSize = 14f;
+        const float volumeButtonSize = 26f;
+        var dl = ImGui.GetWindowDrawList();
+        var rowTop = ImGui.GetCursorScreenPos();
+        var contentWidth = WindowWidth - CardPadding * 2;
+
+        var listenerText = nowPlaying?.ListenerCount is { } count ? $"{count:N0} listening" : null;
+        if (listenerText is not null)
+        {
+            var iconCenter = rowTop + new Vector2(iconSize / 2, iconSize / 2);
+            Icons.Headset(dl, iconCenter, iconSize, C(Theme.TextMuted));
+            ImGui.Dummy(new Vector2(iconSize, iconSize));
+            ImGui.SameLine(0, 5);
+            ImGui.TextColored(CV(Theme.TextMuted), listenerText);
+        }
+        else
+        {
+            ImGui.Dummy(new Vector2(1, iconSize));
+        }
+
+        // Live DJ sets have no fixed track length — RemainingSeconds and
+        // DurationSeconds both go null together (see NowPlaying doc
+        // comments), so there's nothing to count down. The header badge
+        // already flags a live DJ; this just says LIVE rather than showing
+        // a blank where the countdown would be.
+        string? timeLabel = null;
+        if (nowPlaying?.Dj is not null)
+        {
+            timeLabel = "LIVE";
+        }
+        else if (plugin.NowPlayingClient.GetRemainingSeconds() is { } remaining)
+        {
+            timeLabel = $"-{remaining / 60}:{remaining % 60:D2}";
+        }
+
+        if (timeLabel is not null)
+        {
+            var timeWidth = ImGui.CalcTextSize(timeLabel).X;
+            ImGui.SetCursorScreenPos(rowTop + new Vector2((contentWidth - timeWidth) / 2, 0));
+            ImGui.TextColored(CV(Theme.TextMuted), timeLabel);
+        }
+
+        // The button itself is an ImGui item, so it extends this group's
+        // measured bounds (used to size the card, see Draw()) on its own —
+        // no follow-up Dummy needed just to reserve its height.
+        ImGui.SetCursorScreenPos(rowTop + new Vector2(contentWidth - volumeButtonSize, (iconSize - volumeButtonSize) / 2));
+        var newVolume = volumePopover.Draw(volumeButtonSize, config.Volume, opacity);
+        if (newVolume != config.Volume)
+        {
+            config.Volume = newVolume;
+            plugin.StreamPlayer.Volume = newVolume;
+            plugin.SaveConfiguration();
         }
     }
 
@@ -663,6 +866,16 @@ public sealed class MainWindow : Window
             ImGui.Dummy(new Vector2(1, 10));
 
             ToggleRow(
+                "Mini player",
+                "Compact single-row layout. Also toggleable from the header icon or /mooglradio mini.",
+                config.MiniPlayer,
+                v =>
+                {
+                    config.MiniPlayer = v;
+                    plugin.SaveConfiguration();
+                });
+
+            ToggleRow(
                 "Click-through",
                 "Clicks pass to the game. Hold Ctrl while hovering the window to interact anyway.",
                 config.ClickThrough,
@@ -693,6 +906,29 @@ public sealed class MainWindow : Window
                 "Restores game BGM when the stream stops",
                 config.MuteGameBgm,
                 v => plugin.SetMuteGameBgm(v));
+
+            ImGui.Dummy(new Vector2(1, 6));
+            SectionHeader("Chat notifications");
+
+            ToggleRow(
+                "Track change",
+                "Prints the new track's title, artist, and album to chat",
+                config.ChatNotifyTrackChange,
+                v =>
+                {
+                    config.ChatNotifyTrackChange = v;
+                    plugin.SaveConfiguration();
+                });
+
+            ToggleRow(
+                "Block change",
+                "Prints to chat when a programming block starts or ends",
+                config.ChatNotifyBlockChange,
+                v =>
+                {
+                    config.ChatNotifyBlockChange = v;
+                    plugin.SaveConfiguration();
+                });
 
             ImGui.EndPopup();
         }
