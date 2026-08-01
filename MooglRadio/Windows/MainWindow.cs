@@ -309,10 +309,16 @@ public sealed class MainWindow : Window
         var iconSize = new Vector2(24, 24);
         const float iconGap = 4f;
         var iconsWidth = iconSize.X * 4 + iconGap * 3;
-        // Local x is relative to the window's left edge (WindowPadding is
-        // zeroed for this window), so this lines the icons up flush with
-        // the card's right inset regardless of the badge's width.
-        ImGui.SameLine(WindowWidth - CardPadding - iconsWidth);
+        // SameLine's offset is relative to the enclosing group's own start
+        // (window.Pos.x + DC.GroupOffset.x), not the window's left edge —
+        // and this row is drawn inside the outer BeginGroup from Draw(),
+        // which already starts CardPadding in from the window edge. Using
+        // just "WindowWidth - CardPadding - iconsWidth" here double-counted
+        // that inset away, landing the icon row flush against the window's
+        // true right edge (0px gap, overlapping the card's rounded corner)
+        // instead of CardPadding in from it. Subtracting CardPadding a
+        // second time cancels that out.
+        ImGui.SameLine(WindowWidth - CardPadding * 2 - iconsWidth);
 
         if (Widgets.IconButton("pin", iconSize, (dl2, c, s, col) => Icons.Pin(dl2, c, s, col, config.Locked), config.Locked, opacity))
         {
@@ -404,9 +410,45 @@ public sealed class MainWindow : Window
         // Reserve the same layout space either way so text doesn't jump
         // around when art loads in or a track has none.
         ImGui.Dummy(size);
+
+        // The 44-60px thumbnail is too small to make out album art detail —
+        // show a larger preview on hover rather than dedicating permanent
+        // layout space to a bigger image.
+        if (texture is not null && ImGui.IsItemHovered())
+        {
+            ImGui.BeginTooltip();
+            const float previewSize = 160f;
+            ImGui.Image(texture.Handle, new Vector2(previewSize, previewSize));
+            ImGui.EndTooltip();
+        }
     }
 
-    private void DrawNowPlayingText(NowPlaying? nowPlaying, NowPlayingTrack? track)
+    /// <summary>
+    /// Number of stacked lines <see cref="DrawNowPlayingText"/> (full player)
+    /// and <see cref="DrawMiniTrackText"/> (mini player) will draw for the
+    /// current track — title + artist, plus album if present, plus a single
+    /// line for the error/loading states. Used to vertically center album
+    /// art against the text column (or vice versa) rather than always
+    /// top-aligning them, since the text block's height varies with how
+    /// many of those fields are present while the art is a fixed size.
+    /// </summary>
+    private static int CountTrackTextLines(NowPlayingTrack? track)
+    {
+        if (track is null)
+        {
+            return 1;
+        }
+
+        var lines = 2;
+        if (!string.IsNullOrWhiteSpace(track.Album))
+        {
+            lines++;
+        }
+
+        return lines;
+    }
+
+    private void DrawNowPlayingText(NowPlayingTrack? track)
     {
         var textColor = C(Theme.TextPrimary);
         var dimColor = C(Theme.TextMuted);
@@ -429,13 +471,9 @@ public sealed class MainWindow : Window
                 DrawMarquee(track.Album, dimColor, TextColumnWidth);
             }
 
-            // Null (no fixed track length, e.g. a live DJ set) is skipped
-            // rather than shown as "LIVE" — the header badge already says
-            // that (see DrawHeaderRow) and repeating it here is just noise.
-            if (nowPlaying?.Dj is null && plugin.NowPlayingClient.GetRemainingSeconds() is { } remaining)
-            {
-                ImGui.TextColored(CV(Theme.TextMuted), $"{remaining / 60}:{remaining % 60:D2} remaining");
-            }
+            // Remaining time now lives under the progress bar (see
+            // DrawTransportRow) rather than stacked here — it's playback
+            // position commentary, not another line of track metadata.
         }
         else if (plugin.NowPlayingClient.LastError is { } metaError)
         {
@@ -480,12 +518,31 @@ public sealed class MainWindow : Window
 
     private void DrawFullBody(Configuration config, NowPlaying? nowPlaying, NowPlayingTrack? track)
     {
+        // Art is a fixed 60px square but the text column's height varies
+        // (2-3 lines depending on whether an album is present) — center
+        // whichever one is shorter against the other instead of always
+        // top-aligning both to the row's start.
+        var lineHeight = ImGui.GetTextLineHeight();
+        var textHeight = CountTrackTextLines(track) * lineHeight;
+        var artOffset = MathF.Max(0, (textHeight - ArtSize.Y) / 2);
+        var textOffset = MathF.Max(0, (ArtSize.Y - textHeight) / 2);
+
         ImGui.BeginGroup();
+        if (artOffset > 0)
+        {
+            ImGui.Dummy(new Vector2(1, artOffset));
+        }
+
         DrawArt();
         ImGui.EndGroup();
         ImGui.SameLine();
         ImGui.BeginGroup();
-        DrawNowPlayingText(nowPlaying, track);
+        if (textOffset > 0)
+        {
+            ImGui.Dummy(new Vector2(1, textOffset));
+        }
+
+        DrawNowPlayingText(track);
         ImGui.EndGroup();
 
         if (plugin.StreamPlayer.LastError is { } playError)
@@ -497,13 +554,13 @@ public sealed class MainWindow : Window
         }
 
         ImGui.Dummy(new Vector2(1, 12));
-        DrawTransportRow(config);
+        DrawTransportRow(config, nowPlaying);
 
         ImGui.Dummy(new Vector2(1, 10));
         DrawFooterRow(config, nowPlaying);
     }
 
-    private void DrawTransportRow(Configuration config)
+    private void DrawTransportRow(Configuration config, NowPlaying? nowPlaying)
     {
         var dl = ImGui.GetWindowDrawList();
         const float buttonSize = 44f;
@@ -555,6 +612,18 @@ public sealed class MainWindow : Window
 
         var progressWidth = WindowWidth - CardPadding * 2 - buttonSize - gapAfterButton - volumeButtonSize - gapBeforeVolume;
         Widgets.ProgressBar(progressWidth, progressHeight, plugin.NowPlayingClient.GetProgress(), Theme.TrackBg, Theme.AccentSecondary, opacity);
+
+        // Sits directly beneath the progress bar, in the same column, so it
+        // reads as playback-position commentary rather than another line of
+        // track metadata (it used to be stacked under the title/artist/
+        // album instead). Null (no fixed track length, e.g. a live DJ set)
+        // is skipped rather than shown as "LIVE" — the header badge already
+        // says that (see DrawHeaderRow).
+        if (nowPlaying?.Dj is null && plugin.NowPlayingClient.GetRemainingSeconds() is { } remaining)
+        {
+            ImGui.Dummy(new Vector2(1, 4));
+            ImGui.TextColored(CV(Theme.TextMuted), $"{remaining / 60}:{remaining % 60:D2} remaining");
+        }
 
         ImGui.EndGroup();
         ImGui.SameLine(0, gapBeforeVolume);
@@ -630,21 +699,45 @@ public sealed class MainWindow : Window
         const float gapTextPlay = 10f;
         var contentWidth = WindowWidth - CardPadding * 2;
 
+        // Art is a fixed 44px square, but the text column can run to 3 lines
+        // (title/artist/album) which sometimes measures taller than that —
+        // rowHeight is whichever is actually taller this frame, and art/text
+        // are each centered against it instead of assuming art always wins.
+        var lineHeight = ImGui.GetTextLineHeight();
+        var textHeight = CountTrackTextLines(track) * lineHeight;
+        var rowHeight = MathF.Max(artSize, textHeight);
+        var artOffset = MathF.Max(0, (rowHeight - artSize) / 2);
+        var textOffset = MathF.Max(0, (rowHeight - textHeight) / 2);
+        var playOffset = (rowHeight - playButtonSize) / 2;
+
         var dl = ImGui.GetWindowDrawList();
         var rowTop = ImGui.GetCursorScreenPos();
 
         ImGui.BeginGroup();
+        if (artOffset > 0)
+        {
+            ImGui.Dummy(new Vector2(1, artOffset));
+        }
+
         DrawArt(new Vector2(artSize, artSize));
         ImGui.EndGroup();
 
         ImGui.SameLine(0, gapArtText);
         var textWidth = contentWidth - artSize - gapArtText - playButtonSize - gapTextPlay;
         ImGui.BeginGroup();
+        if (textOffset > 0)
+        {
+            ImGui.Dummy(new Vector2(1, textOffset));
+        }
+
         DrawMiniTrackText(track, textWidth);
         ImGui.EndGroup();
 
-        ImGui.SameLine(WindowWidth - CardPadding - playButtonSize);
-        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + (artSize - playButtonSize) / 2);
+        // See the comment on the header icon row's SameLine call — same
+        // GroupOffset double-counting bug, same fix (subtract CardPadding
+        // twice to land CardPadding in from the window edge instead of 0).
+        ImGui.SameLine(WindowWidth - CardPadding * 2 - playButtonSize);
+        ImGui.SetCursorPosY(ImGui.GetCursorPosY() + playOffset);
 
         var btnMin = ImGui.GetCursorScreenPos();
         ImGui.InvisibleButton("##mini-playpause", new Vector2(playButtonSize, playButtonSize));
@@ -675,11 +768,10 @@ public sealed class MainWindow : Window
             }
         }
 
-        // Art is the tallest element in the row (44px vs. the 34px play
-        // button); the row's real bottom is the art's, so realign the
-        // cursor there rather than trusting wherever the play button
-        // (offset downward to center it) left it.
-        ImGui.SetCursorScreenPos(rowTop + new Vector2(0, artSize));
+        // rowHeight (whichever of art/text measured taller) is the row's
+        // real bottom — realign there rather than trusting wherever the
+        // play button (offset downward to center it) left the cursor.
+        ImGui.SetCursorScreenPos(rowTop + new Vector2(0, rowHeight));
 
         if (plugin.StreamPlayer.LastError is { } playError)
         {
