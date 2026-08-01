@@ -26,12 +26,34 @@ public sealed class NowPlayingClient : IDisposable
     private CancellationTokenSource? cts;
     private Task? pollTask;
 
+    /// <summary>UTC time this poll's <see cref="NowPlaying.RemainingSeconds"/>
+    /// was captured, so <see cref="GetRemainingSeconds"/> can subtract elapsed
+    /// wall-clock time instead of re-polling every second for a countdown.</summary>
+    private DateTime latestPolledAtUtc;
+
     public NowPlaying? Latest { get; private set; }
 
     /// <summary>Message from the most recent failed poll, or null if the last poll succeeded.</summary>
     public string? LastError { get; private set; }
 
     public event Action<NowPlaying>? Updated;
+
+    /// <summary>
+    /// Ticks <see cref="NowPlaying.RemainingSeconds"/> down locally between
+    /// polls, the same way the web client's useRadioPlayer.ts does, rather
+    /// than hammering the API for a per-second countdown. Null when there's
+    /// no track length to count down (e.g. a live DJ set) or no data yet.
+    /// </summary>
+    public int? GetRemainingSeconds()
+    {
+        if (Latest?.RemainingSeconds is not { } remainingAtPoll)
+        {
+            return null;
+        }
+
+        var elapsed = (DateTime.UtcNow - latestPolledAtUtc).TotalSeconds;
+        return Math.Max(0, (int)Math.Round(remainingAtPoll - elapsed));
+    }
 
     public void Start(string apiBaseUrl)
     {
@@ -58,6 +80,7 @@ public sealed class NowPlayingClient : IDisposable
                 if (result is not null)
                 {
                     Latest = result;
+                    latestPolledAtUtc = DateTime.UtcNow;
                     LastError = null;
                     Updated?.Invoke(result);
                 }

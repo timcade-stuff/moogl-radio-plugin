@@ -226,7 +226,7 @@ public sealed class MainWindow : Window
         ImGui.EndGroup();
         ImGui.SameLine();
         ImGui.BeginGroup();
-        DrawNowPlayingText(track);
+        DrawNowPlayingText(nowPlaying, track);
         ImGui.EndGroup();
 
         if (plugin.StreamPlayer.LastError is { } playError)
@@ -241,7 +241,7 @@ public sealed class MainWindow : Window
         DrawTransportRow(config);
 
         ImGui.Dummy(new Vector2(1, 10));
-        DrawFooterRow(config);
+        DrawFooterRow(config, nowPlaying);
 
         ImGui.EndGroup();
         var groupMax = ImGui.GetItemRectMax();
@@ -272,25 +272,21 @@ public sealed class MainWindow : Window
     {
         // Precedence: a live DJ set outranks the scheduled block name (DJs
         // go live mid-block), which outranks the bare "moogl.fm" fallback.
-        // Listener count, when the API has it, tags onto whichever of those
-        // is showing rather than replacing it.
-        string context;
+        // Listener count lives in the footer (see DrawFooterRow), not here.
+        string badgeLabel;
         if (nowPlaying?.Dj is not null)
         {
-            context = $"Live · {nowPlaying.Dj.Name}";
+            badgeLabel = $"Live · {nowPlaying.Dj.Name}";
         }
         else if (nowPlaying?.Block is { } block && !string.IsNullOrWhiteSpace(block))
         {
-            context = block;
+            badgeLabel = block;
         }
         else
         {
-            context = "moogl.fm";
+            badgeLabel = "moogl.fm";
         }
 
-        var badgeLabel = nowPlaying?.ListenerCount is { } count
-            ? $"{context} · {count} listening"
-            : context;
         var textSize = ImGui.CalcTextSize(badgeLabel);
 
         // A live DJ name or block title of arbitrary length shouldn't be
@@ -399,7 +395,7 @@ public sealed class MainWindow : Window
         ImGui.Dummy(ArtSize);
     }
 
-    private void DrawNowPlayingText(NowPlayingTrack? track)
+    private void DrawNowPlayingText(NowPlaying? nowPlaying, NowPlayingTrack? track)
     {
         var textColor = C(Theme.TextPrimary);
         var dimColor = C(Theme.TextMuted);
@@ -410,10 +406,22 @@ public sealed class MainWindow : Window
         if (track is not null)
         {
             DrawMarquee(track.Title, textColor);
-            DrawMarquee(track.Artist, dimColor);
-            if (!string.IsNullOrWhiteSpace(track.Album))
+
+            // Album rides on the same line as the artist rather than its own
+            // row — DrawMarquee already scrolls whatever doesn't fit, so a
+            // combined "Artist · Album" string gets that for free instead of
+            // needing a third stacked line.
+            var artistLine = string.IsNullOrWhiteSpace(track.Album)
+                ? track.Artist
+                : $"{track.Artist} · {track.Album}";
+            DrawMarquee(artistLine, dimColor);
+
+            // Null (no fixed track length, e.g. a live DJ set) is skipped
+            // rather than shown as "LIVE" — the header badge already says
+            // that (see DrawHeaderRow) and repeating it here is just noise.
+            if (nowPlaying?.Dj is null && plugin.NowPlayingClient.GetRemainingSeconds() is { } remaining)
             {
-                DrawMarquee(track.Album, dimColor);
+                ImGui.TextColored(CV(Theme.TextMuted), $"{remaining / 60}:{remaining % 60:D2} remaining");
             }
         }
         else if (plugin.NowPlayingClient.LastError is { } metaError)
@@ -523,16 +531,25 @@ public sealed class MainWindow : Window
         ImGui.EndGroup();
     }
 
-    private void DrawFooterRow(Configuration config)
+    private void DrawFooterRow(Configuration config, NowPlaying? nowPlaying)
     {
         DrawDivider();
         ImGui.Dummy(new Vector2(1, 4));
+
+        // Listener count sits right-aligned on the same row as the
+        // branding/click-through text, mirroring the header's live dot —
+        // reserve its width up front so the left text wraps before
+        // colliding with it instead of running underneath.
+        var listenerText = nowPlaying?.ListenerCount is { } count ? $"{count} listening" : null;
+        var listenerWidth = listenerText is not null ? ImGui.CalcTextSize(listenerText).X : 0f;
+        var listenerReserve = listenerText is not null ? listenerWidth + 12f : 0f;
+        var cursorY = ImGui.GetCursorPosY();
 
         // Wrapped for the same reason as the playback-error text above: an
         // unbounded line here can measure wider than the card, pushing the
         // group's bounding box past WindowWidth and flat-clipping the
         // card's right-side rounding.
-        ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + WindowWidth - CardPadding * 2);
+        ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + WindowWidth - CardPadding * 2 - listenerReserve);
         if (config.ClickThrough)
         {
             ImGui.TextColored(
@@ -544,6 +561,12 @@ public sealed class MainWindow : Window
             ImGui.TextColored(CV(Theme.TextMuted), "MOOGL Radio · moogl.fm");
         }
         ImGui.PopTextWrapPos();
+
+        if (listenerText is not null)
+        {
+            ImGui.SetCursorPos(new Vector2(WindowWidth - CardPadding - listenerWidth, cursorY));
+            ImGui.TextColored(CV(Theme.TextMuted), listenerText);
+        }
     }
 
     /// <summary>

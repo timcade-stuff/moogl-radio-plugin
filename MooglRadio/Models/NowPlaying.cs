@@ -13,13 +13,20 @@ namespace MooglRadio.Models;
 /// is (absolute URI, https scheme) before being handed to
 /// <see cref="Services.StreamPlayer.Play"/> — don't fetch it unvalidated.
 /// </param>
+/// <param name="RemainingSeconds">
+/// Seconds left in the current track as of this poll, per the same field
+/// the web client's useRadioPlayer.ts ticks down locally rather than
+/// re-polling every second — see <see cref="Services.NowPlayingClient.GetRemainingSeconds"/>.
+/// Null while a DJ is live (no fixed track length to count down).
+/// </param>
 public sealed record NowPlaying(
     string Status,
     string? Block,
     NowPlayingTrack? Track,
     NowPlayingDj? Dj,
     string StreamUrl,
-    int? ListenerCount = null);
+    int? ListenerCount = null,
+    int? RemainingSeconds = null);
 
 /// <summary>
 /// ArtUrl is relative (e.g. "/api/now-playing/art") — prefix with the
