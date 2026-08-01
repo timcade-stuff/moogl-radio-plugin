@@ -203,7 +203,7 @@ that goes into a PR against
 ## AI Disclosure
 This project is built in a copilot mode - the LLM does most of the coding, with human interaction at every step of the journey. Testing is all done by a human, with automations for builds/releases and security scans built as GHA pipelines within the repository.
 
-### Mitigations
+### Mitigations & Security Considerations
 In an attempt to mitigate security concerns that are always at the heart of any project built with LLMs, I've included a variety of code scans to try to ensure the integrity of the project as much as possible. Since data is collected from public endpoints via GET and no data is sent to the server using POST, the attack surface is limited. See the `SECURITY_AUDIT.md` file for my findings and the remediations taken therein.
 
 NOTE: There are plans for minimal data-sending that will only be done when an option is enabled in the configuration of the plugin, where it will share *where* in Eorzea you're listening from while playing. This feature will only pull data of the current player's location and post it to the site anonymously, so it can be displayed on a map. This will *only* work when enabled.
