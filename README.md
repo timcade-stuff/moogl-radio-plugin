@@ -180,6 +180,33 @@ dotnet build MooglRadio/MooglRadio.csproj
 For local dev iteration instead, use "Load DevPlugin" pointed at the
 built DLL.
 
+## Releasing a new version
+
+Three files carry the version number and **all three must match** before
+tagging, or the plugin will fail to install/update with a version
+mismatch (this bit us once — `MooglRadio.json` got bumped but
+`repo.json`/the csproj didn't, silently shipping a broken release):
+
+1. `MooglRadio/MooglRadio.csproj` — `<Version>` (this is what actually
+   gets baked into the built assembly)
+2. `MooglRadio/MooglRadio.json` — `AssemblyVersion` (packaged into the
+   release zip's manifest)
+3. `repo.json` — `AssemblyVersion` (what the in-game installer checks
+   against to decide an update is available; lives at repo root, served
+   raw from `main`)
+
+All three should be the identical `x.y.z.0` value. Bump all three in the
+same commit, then tag and push:
+
+```bash
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+Pushing the tag triggers `.github/workflows/release.yml`, which builds
+and publishes `MooglRadio.zip` to a GitHub Release — `repo.json`'s
+`DownloadLink*` fields always point at `releases/latest`, so no other
+repo.json changes are needed per release beyond the version bump above.
+
 ## Submitting to the official Dalamud plugin repo
 
 In progress — see `submission/manifest.toml` for the draft manifest
