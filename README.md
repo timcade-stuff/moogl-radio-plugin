@@ -1,6 +1,6 @@
 # MooglRadio (Dalamud plugin)
 
-In-game player for [MOOGLradio](https://moogl.fm)
+In-game player for [MOOGL Radio](https://moogl.fm)
 — play/pause, volume, cover art, and scrolling now-playing track/DJ info,
 in a compact, fixed-size ImGui window. Background opacity is adjustable,
 and the window can be pinned (no drag) and set click-through via the gear
@@ -170,7 +170,7 @@ dotnet build MooglRadio/MooglRadio.csproj
    ```
    https://raw.githubusercontent.com/timcade-stuff/moogl-radio-plugin/main/repo.json
    ```
-2. Search "MOOGLradio" in the plugin installer and install it. Updates
+2. Search "MOOGL Radio" in the plugin installer and install it. Updates
    after that are automatic — CI publishes a new release (and this
    repo.json always points at `releases/latest`) whenever a `v*` tag is
    pushed.

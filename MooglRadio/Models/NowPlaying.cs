@@ -19,14 +19,6 @@ namespace MooglRadio.Models;
 /// re-polling every second — see <see cref="Services.NowPlayingClient.GetRemainingSeconds"/>.
 /// Null while a DJ is live (no fixed track length to count down).
 /// </param>
-/// <param name="DurationSeconds">
-/// Total length of the current track in seconds. Goes null together with
-/// <paramref name="RemainingSeconds"/> for a live DJ set, but can also be
-/// null on its own when ID3 tag reading failed for that file even though
-/// a remaining-seconds countdown is still available — treat that as
-/// "unknown length" rather than assuming it mirrors RemainingSeconds'
-/// nullness. See <see cref="Services.NowPlayingClient.GetProgress"/>.
-/// </param>
 public sealed record NowPlaying(
     string Status,
     string? Block,
@@ -34,14 +26,22 @@ public sealed record NowPlaying(
     NowPlayingDj? Dj,
     string StreamUrl,
     int? ListenerCount = null,
-    int? RemainingSeconds = null,
-    int? DurationSeconds = null);
+    int? RemainingSeconds = null);
 
 /// <summary>
 /// ArtUrl is relative (e.g. "/api/now-playing/art") — prefix with the
 /// configured ApiBaseUrl to get a fetchable URL. Null when the current
 /// track has no cover art available.
 /// </summary>
-public sealed record NowPlayingTrack(string Title, string Artist, string? Album, string? ArtUrl);
+/// <param name="DurationSeconds">
+/// Total length of the track in seconds, per the live API's
+/// <c>track.durationSeconds</c> field (nested under track, not a sibling of
+/// <see cref="NowPlaying.RemainingSeconds"/> — confirmed against the real
+/// moogl.fm/api/now-playing response). Null when ID3 tag reading failed for
+/// that file even though a remaining-seconds countdown is still available —
+/// treat that as "unknown length" rather than assuming it mirrors
+/// RemainingSeconds' nullness. See <see cref="Services.NowPlayingClient.GetProgress"/>.
+/// </param>
+public sealed record NowPlayingTrack(string Title, string Artist, string? Album, string? ArtUrl, int? DurationSeconds = null);
 
 public sealed record NowPlayingDj(string Name);

@@ -57,7 +57,7 @@ public sealed class NowPlayingClient : IDisposable
 
     /// <summary>
     /// Fraction of the current track played so far (0..1), derived from
-    /// <see cref="GetRemainingSeconds"/> and <see cref="NowPlaying.DurationSeconds"/>
+    /// <see cref="GetRemainingSeconds"/> and <see cref="NowPlayingTrack.DurationSeconds"/>
     /// rather than tracked separately — elapsed = duration - remaining, both
     /// already tick locally between polls. Null whenever either input is
     /// null: both go null together for a live DJ set (no fixed length), and
@@ -68,7 +68,7 @@ public sealed class NowPlayingClient : IDisposable
     /// </summary>
     public float? GetProgress()
     {
-        if (Latest?.DurationSeconds is not { } duration || duration <= 0)
+        if (Latest?.Track?.DurationSeconds is not { } duration || duration <= 0)
         {
             return null;
         }

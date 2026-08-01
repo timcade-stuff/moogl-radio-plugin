@@ -39,7 +39,14 @@ public sealed class MainWindow : Window
 {
     private const float WindowWidth = 320f;
     private static readonly Vector2 ArtSize = new(60, 60);
-    private const float CardPadding = 14f;
+    // Bumped from 14f: the header's gear/close icons and the mini player's
+    // right-anchored play button sit right up against their own 24px/34px
+    // hit-box edges (unlike the left side's badge/art, which has visible
+    // interior padding before its content starts), so the same raw inset
+    // read as noticeably tighter on the right. A larger shared inset keeps
+    // both sides feeling symmetric without needing separate left/right
+    // constants.
+    private const float CardPadding = 18f;
     private const float TextColumnWidth = 172f;
     private const float MarqueeSpeedPxPerSecond = 40f;
     private const float MarqueeGap = 40f;
@@ -725,7 +732,10 @@ public sealed class MainWindow : Window
         var rowTop = ImGui.GetCursorScreenPos();
         var contentWidth = WindowWidth - CardPadding * 2;
 
-        var listenerText = nowPlaying?.ListenerCount is { } count ? $"{count:N0} listening" : null;
+        // "listening" is dropped here (unlike the full player's footer) —
+        // the headset icon already conveys that, and the mini player is
+        // meant to be as compact as possible.
+        var listenerText = nowPlaying?.ListenerCount is { } count ? $"{count:N0}" : null;
         if (listenerText is not null)
         {
             var iconCenter = rowTop + new Vector2(iconSize / 2, iconSize / 2);

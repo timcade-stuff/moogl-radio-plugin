@@ -53,7 +53,11 @@ internal sealed class VolumePopover
         }
 
         const float popupWidth = 46f;
-        const float popupHeight = 110f;
+        // Tall enough for the label line + gap + 74px fader + top/bottom
+        // WindowPadding (10*2) with room to spare — the old 110f was a hair
+        // short of the actual measured content, which made ImGui treat the
+        // popup as overflowing and draw a scrollbar over the fader.
+        const float popupHeight = 130f;
         const float gap = 6f;
 
         // Anchored above the button, right edge flush with it — same
@@ -64,12 +68,17 @@ internal sealed class VolumePopover
         ImGui.SetNextWindowSize(new Vector2(popupWidth, popupHeight));
 
         ImGui.PushStyleColor(ImGuiCol.PopupBg, Theme.BgCard);
-        ImGui.PushStyleColor(ImGuiCol.Border, Theme.BorderColor);
+        // A visibly brighter border than the main card's (Theme.BorderColor
+        // is a subtle 10%-alpha hairline meant to sit against the card's own
+        // opaque background) — this popover floats directly over game world
+        // content, so it needs a clearer edge to read as a distinct surface.
+        ImGui.PushStyleColor(ImGuiCol.Border, new Vector4(1f, 1f, 1f, 0.35f));
         ImGui.PushStyleVar(ImGuiStyleVar.PopupRounding, 12f);
+        ImGui.PushStyleVar(ImGuiStyleVar.PopupBorderSize, 1.5f);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(8, 10));
 
         var newVolume = volume;
-        if (ImGui.BeginPopup(PopupId))
+        if (ImGui.BeginPopup(PopupId, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse))
         {
             var label = $"{(int)MathF.Round(volume * 100)}%";
             var labelWidth = ImGui.CalcTextSize(label).X;
@@ -89,7 +98,7 @@ internal sealed class VolumePopover
             isOpen = false;
         }
 
-        ImGui.PopStyleVar(2);
+        ImGui.PopStyleVar(3);
         ImGui.PopStyleColor(2);
 
         return newVolume;
