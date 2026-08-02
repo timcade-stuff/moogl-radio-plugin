@@ -123,7 +123,6 @@ public sealed class Plugin : IDalamudPlugin
             }
         };
         StreamPlayer.Stopped += ListenerLocationClient.Stop;
-        ListenerLocationClient.Diagnostic += msg => this.log.Info($"MOOGLradio listener-location: {msg}");
 
         NowPlayingClient.Updated += np => AlbumArtService.UpdateFor(Configuration.ApiBaseUrl, np.Track?.ArtUrl);
         NowPlayingClient.Updated += OnNowPlayingUpdated;
