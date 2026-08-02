@@ -1,13 +1,32 @@
 # MooglRadio (Dalamud plugin)
 
-In-game player for [MOOGL Radio](https://moogl.fm)
-— play/pause, volume, cover art, and scrolling now-playing track/DJ info,
-in a compact, fixed-size ImGui window. Background opacity is adjustable,
-and the window can be pinned (no drag) and set click-through via the gear
-icon or chat subcommands. While the radio plays, the game's own BGM is
-muted (via Dalamud's official `IGameConfig`, not memory hacking) so it
-doesn't layer under the stream — toggle this in the gear-icon settings,
-on by default. No DJ/admin functionality here; that lives on the website.
+In-game player for [MOOGL Radio](https://moogl.fm), a compact ImGui window
+docked over the game. No DJ/admin functionality here; that lives on the
+website.
+
+## Features
+
+- **Playback** — play/pause the stream, volume slider (`Services/StreamPlayer.cs`).
+- **Now-playing info** — cover art and scrolling title/artist/album text,
+  live DJ badge, current programming block, listener count, remaining-time
+  countdown (`Services/NowPlayingClient.cs`, `Services/AlbumArtService.cs`,
+  `Windows/MainWindow.cs`).
+- **Window controls** — adjustable background opacity, pin/lock (disables
+  dragging), click-through (clicks pass to the game; hold Ctrl to interact
+  anyway), and a compact single-row mini player, all via the gear icon or
+  chat subcommands (`Windows/MainWindow.cs`).
+- **Game BGM auto-mute** — mutes the game's own background music while the
+  radio plays and restores it on stop, via Dalamud's official `IGameConfig`
+  (not memory hacking), on by default (`Services/BgmMuter.cs`).
+- **Chat notifications** — optional chat lines on track change and on
+  programming block start/end, both off by default (`Plugin.cs`).
+- **Listener location map (opt-in, off by default)** — shares your current
+  zone and in-game position with moogl.fm every 30 seconds while the
+  stream plays, powering the site's live listener map. Anonymous
+  per-session ID only, generated in memory and never persisted; no
+  character name, account, or server is ever sent
+  (`Services/ListenerLocationClient.cs`). See the Mitigations & Security
+  Considerations section below for the full privacy contract.
 
 ## Commands
 
@@ -35,9 +54,11 @@ and confirmed (or fixed) against real in-game reports:
 - ✅ **Confirmed in-game (v0.1.10):** stream connects, decodes, and plays
   audibly; game BGM correctly mutes while playing. See item 3 below for
   the full chain of issues this took.
-- ❌ Not yet confirmed in-game: cover art (`AlbumArtService`), the
-  scrolling marquee text, and the instant-stop-on-pause fix — all added
-  after the v0.1.10 confirmation, see items 6-8 below.
+- ✅ Cover art (`AlbumArtService`) and the scrolling marquee text are
+  confirmed working in-game — see items 7-8 below.
+- ❌ Instant-stop-on-pause (item 6 below) is **not** fixed — audible lag
+  after pausing is still reproducible in-game despite the volume-zeroing
+  change.
 
 Things to double-check when you pick this up for real:
 
@@ -109,36 +130,28 @@ Things to double-check when you pick this up for real:
    The `true` = muted direction was inferred (not just the option names,
    which came straight from Dalamud's source) and has now been confirmed
    correct in-game — no inversion needed.
-6. **Instant stop on Pause (`StreamPlayer.StopInternal`)** — not yet
-   confirmed in-game. Reported: pressing Pause kept playing buffered
-   audio for a while before actually going silent, though the BGM
-   correctly un-muted immediately (confirming `Stop()` itself does fire
-   right away). Suspected cause: under Wine, `WaveOutEvent.Stop()`
-   doesn't always flush already-queued device buffers instantly. Fixed
-   by zeroing `WaveFloatTo16Provider.Volume` before calling
-   `waveOut.Stop()`/`Dispose()`, so anything still in flight at the
-   device level comes out silent rather than audible. If this doesn't
-   fully fix it, the remaining gap is genuinely inside Wine's audio
-   driver and not something app-level code can control.
-7. **`AlbumArtService` (`Services/AlbumArtService.cs`)** — not yet
-   confirmed in-game. Downloads the current track's cover art
+6. **Instant stop on Pause (`StreamPlayer.StopInternal`)** — ❌ still
+   broken, re-confirmed in-game: pressing Pause still keeps playing
+   buffered audio for a while before actually going silent, even with the
+   volume-zeroing fix (zeroing `WaveFloatTo16Provider.Volume` before
+   calling `waveOut.Stop()`/`Dispose()`) in place. The BGM does correctly
+   un-mute immediately (confirming `Stop()` itself fires right away), so
+   the remaining lag is specifically in already-queued audio at the
+   device/driver level. Likely genuinely inside Wine's `WaveOutEvent`
+   buffering and not something app-level code can fully control without a
+   different output backend — worth revisiting if this needs a real fix.
+7. **`AlbumArtService` (`Services/AlbumArtService.cs`)** — ✅ confirmed
+   working in-game. Downloads the current track's cover art
    (`{ApiBaseUrl}{track.ArtUrl}`) and converts it via
    `ITextureProvider.CreateFromImageAsync` for rendering with
-   `ImGui.Image`. Two specific unknowns: (a) whether
-   `CreateFromImageAsync` is actually safe to call off the main/framework
-   thread — its doc comment doesn't flag a main-thread requirement
-   (unlike `CreateTextureFromSeString`, which explicitly does), but this
-   hasn't been exercised in-game; (b) the exact `ImGui.Image` overload
-   signature in `Dalamud.Bindings.ImGui` — used the 2-arg
-   `(ImTextureID, Vector2)` form, may need `uv0`/`uv1`/tint/border
-   params depending on the binding version.
-8. **Scrolling marquee text (`MainWindow.DrawMarquee`)** — not yet
-   confirmed in-game. Hand-rolled via `ImGuiWindowDrawList.PushClipRect`
-   + `AddText` with a time-based scroll offset (`ImGui.GetTime()`), since
-   ImGui has no built-in marquee widget. Text that fits the column just
-   draws normally; only overflowing lines scroll. Two-copy wraparound
-   (`AddText` called twice per scrolling line) should make the loop
-   seamless, but the exact spacing/legibility hasn't been seen rendered.
+   `ImGui.Image`; renders correctly, including the larger hover preview
+   added later.
+8. **Scrolling marquee text (`MainWindow.DrawMarquee`)** — ✅ confirmed
+   working in-game. Hand-rolled via `ImGuiWindowDrawList.PushClipRect` +
+   `AddText` with a time-based scroll offset (`ImGui.GetTime()`), since
+   ImGui has no built-in marquee widget; scrolls smoothly and stays
+   legible for long titles, with the two-copy wraparound looping
+   seamlessly.
 
 ## Building
 
@@ -231,6 +244,6 @@ that goes into a PR against
 This project is built in a copilot mode - the LLM does most of the coding, with human interaction at every step of the journey. Testing is all done by a human, with automations for builds/releases and security scans built as GHA pipelines within the repository.
 
 ### Mitigations & Security Considerations
-In an attempt to mitigate security concerns that are always at the heart of any project built with LLMs, I've included a variety of code scans to try to ensure the integrity of the project as much as possible. Since data is collected from public endpoints via GET and no data is sent to the server using POST, the attack surface is limited. See the `SECURITY_AUDIT.md` file for my findings and the remediations taken therein.
+In an attempt to mitigate security concerns that are always at the heart of any project built with LLMs, I've included a variety of code scans to try to ensure the integrity of the project as much as possible. Most data is collected from public endpoints via GET; the one exception is described below. See the `SECURITY_AUDIT.md` file for my findings and the remediations taken therein.
 
-NOTE: There are plans for minimal data-sending that will only be done when an option is enabled in the configuration of the plugin, where it will share *where* in Eorzea you're listening from while playing. This feature will only pull data of the current player's location and post it to the site anonymously, so it can be displayed on a map. This will *only* work when enabled.
+**Listener location (opt-in, off by default):** when enabled in Settings, the plugin POSTs an anonymous heartbeat (a random per-session ID generated in memory, your current zone, and in-game position) to moogl.fm every 30 seconds while the stream is playing, powering the site's "where are listeners tuning in from" map. The session ID is never persisted to disk and is never derived from your character name, account, or server — none of that is ever sent. Disabling the setting or stopping playback stops the heartbeats (no explicit disconnect call is sent; the server simply expires the session after a short timeout).

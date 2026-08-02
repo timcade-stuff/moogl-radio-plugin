@@ -1032,6 +1032,15 @@ public sealed class MainWindow : Window
                     plugin.SaveConfiguration();
                 });
 
+            ImGui.Dummy(new Vector2(1, 6));
+            SectionHeader("Listener map");
+
+            ToggleRow(
+                "Share my location",
+                "Shares your current zone and in-game position with moogl.fm while listening, so you show up on the live listener map. Off by default; nothing else about you is sent.",
+                config.ShareListenerLocation,
+                v => plugin.SetShareListenerLocation(v));
+
             ImGui.EndPopup();
         }
 

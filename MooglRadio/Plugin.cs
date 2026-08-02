@@ -18,6 +18,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly ICommandManager commandManager;
     private readonly IPluginLog log;
     private readonly IChatGui chatGui;
+    private readonly IClientState clientState;
     private readonly MainWindow mainWindow;
     private readonly BgmMuter bgmMuter;
 
@@ -37,6 +38,7 @@ public sealed class Plugin : IDalamudPlugin
     public StreamPlayer StreamPlayer { get; } = new();
     public NowPlayingClient NowPlayingClient { get; } = new();
     public AlbumArtService AlbumArtService { get; }
+    public ListenerLocationClient ListenerLocationClient { get; } = new();
 
     public Plugin(
         IDalamudPluginInterface pluginInterface,
@@ -44,12 +46,14 @@ public sealed class Plugin : IDalamudPlugin
         IPluginLog log,
         IGameConfig gameConfig,
         ITextureProvider textureProvider,
-        IChatGui chatGui)
+        IChatGui chatGui,
+        IClientState clientState)
     {
         this.pluginInterface = pluginInterface;
         this.commandManager = commandManager;
         this.log = log;
         this.chatGui = chatGui;
+        this.clientState = clientState;
         this.bgmMuter = new BgmMuter(gameConfig, log);
         this.AlbumArtService = new AlbumArtService(textureProvider, log);
 
@@ -105,6 +109,14 @@ public sealed class Plugin : IDalamudPlugin
             }
         };
         StreamPlayer.Stopped += bgmMuter.RestoreGameBgm;
+        StreamPlayer.Started += () =>
+        {
+            if (Configuration.ShareListenerLocation)
+            {
+                ListenerLocationClient.Start(Configuration.ApiBaseUrl, GetCurrentLocation);
+            }
+        };
+        StreamPlayer.Stopped += ListenerLocationClient.Stop;
 
         NowPlayingClient.Updated += np => AlbumArtService.UpdateFor(Configuration.ApiBaseUrl, np.Track?.ArtUrl);
         NowPlayingClient.Updated += OnNowPlayingUpdated;
@@ -149,6 +161,43 @@ public sealed class Plugin : IDalamudPlugin
         {
             bgmMuter.RestoreGameBgm();
         }
+    }
+
+    /// <summary>Updates the share-listener-location setting, starting or stopping the
+    /// heartbeat loop immediately if the stream is already playing rather than waiting
+    /// for the next Play()/Stop() cycle.</summary>
+    public void SetShareListenerLocation(bool value)
+    {
+        Configuration.ShareListenerLocation = value;
+        SaveConfiguration();
+
+        if (!StreamPlayer.IsPlaying)
+        {
+            return;
+        }
+
+        if (value)
+        {
+            ListenerLocationClient.Start(Configuration.ApiBaseUrl, GetCurrentLocation);
+        }
+        else
+        {
+            ListenerLocationClient.Stop();
+        }
+    }
+
+    /// <summary>Raw world position + zone for the current heartbeat, or null when there's
+    /// no local player to read (e.g. between zone loads). Deliberately raw world coordinates
+    /// (<see cref="IPlayerCharacter.Position"/>), not the in-game map-pixel readout — the API
+    /// converts world space to map space itself.</summary>
+    private (int territoryId, float x, float z)? GetCurrentLocation()
+    {
+        if (clientState.LocalPlayer is not { } player)
+        {
+            return null;
+        }
+
+        return ((int)clientState.TerritoryType, player.Position.X, player.Position.Z);
     }
 
     /// <summary>Prints chat notifications for track/block changes, per <see cref="Configuration.ChatNotifyTrackChange"/>
@@ -227,5 +276,6 @@ public sealed class Plugin : IDalamudPlugin
         StreamPlayer.Dispose();
         NowPlayingClient.Dispose();
         AlbumArtService.Dispose();
+        ListenerLocationClient.Dispose();
     }
 }

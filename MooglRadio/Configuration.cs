@@ -33,6 +33,12 @@ public sealed class Configuration : IPluginConfiguration
     /// <summary>Prints a chat message whenever the current programming block starts or ends.</summary>
     public bool ChatNotifyBlockChange { get; set; }
 
+    /// <summary>Opt-in, default off. While enabled and the stream is playing, periodically
+    /// sends the current zone and in-game position to moogl.fm as an anonymous per-session
+    /// heartbeat, powering the site's listener map. No character name, account, or server
+    /// is ever sent — see <see cref="Services.ListenerLocationClient"/>.</summary>
+    public bool ShareListenerLocation { get; set; }
+
     /// <summary>Last on-screen position, restored on the next launch. Null until the
     /// window has been dragged at least once (then it just uses ImGui's default spot).</summary>
     public float? WindowPosX { get; set; }
