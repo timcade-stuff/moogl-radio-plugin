@@ -19,6 +19,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly IPluginLog log;
     private readonly IChatGui chatGui;
     private readonly IClientState clientState;
+    private readonly IObjectTable objectTable;
     private readonly MainWindow mainWindow;
     private readonly BgmMuter bgmMuter;
 
@@ -47,13 +48,15 @@ public sealed class Plugin : IDalamudPlugin
         IGameConfig gameConfig,
         ITextureProvider textureProvider,
         IChatGui chatGui,
-        IClientState clientState)
+        IClientState clientState,
+        IObjectTable objectTable)
     {
         this.pluginInterface = pluginInterface;
         this.commandManager = commandManager;
         this.log = log;
         this.chatGui = chatGui;
         this.clientState = clientState;
+        this.objectTable = objectTable;
         this.bgmMuter = new BgmMuter(gameConfig, log);
         this.AlbumArtService = new AlbumArtService(textureProvider, log);
 
@@ -188,11 +191,12 @@ public sealed class Plugin : IDalamudPlugin
 
     /// <summary>Raw world position + zone for the current heartbeat, or null when there's
     /// no local player to read (e.g. between zone loads). Deliberately raw world coordinates
-    /// (<see cref="IPlayerCharacter.Position"/>), not the in-game map-pixel readout — the API
-    /// converts world space to map space itself.</summary>
+    /// (<see cref="IGameObject.Position"/>), not the in-game map-pixel readout — the API
+    /// converts world space to map space itself. LocalPlayer lives on <see cref="IObjectTable"/>,
+    /// not <see cref="IClientState"/> (which only carries TerritoryType/zone-level state).</summary>
     private (int territoryId, float x, float z)? GetCurrentLocation()
     {
-        if (clientState.LocalPlayer is not { } player)
+        if (objectTable.LocalPlayer is not { } player)
         {
             return null;
         }
