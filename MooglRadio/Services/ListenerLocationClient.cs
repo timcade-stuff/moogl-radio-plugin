@@ -36,13 +36,24 @@ public sealed class ListenerLocationClient : IDisposable
     /// <summary>Regenerated every <see cref="Start"/> call; never persisted, never reused.</summary>
     private string sessionId = GenerateSessionId();
 
-    public void Start(string apiBaseUrl, Func<(int territoryId, float x, float z)?> getLocation)
+    /// <summary>Message from the most recent failed heartbeat (bad location read, HTTP
+    /// error, exception), or null if the last attempt succeeded. Best-effort telemetry
+    /// only — nothing in the plugin depends on this being non-null-checked.</summary>
+    public string? LastError { get; private set; }
+
+    /// <summary>Fires with a short line per heartbeat attempt (HTTP status, or the reason
+    /// it didn't send) so failures are visible via <c>IPluginLog</c>/<c>/xllog</c> instead
+    /// of silently vanishing — see <see cref="Plugin.GetCurrentLocationAsync"/>'s doc
+    /// comment for the specific silent-failure mode this replaced.</summary>
+    public event Action<string>? Diagnostic;
+
+    public void Start(string apiBaseUrl, Func<Task<(int territoryId, float x, float z)?>> getLocationAsync)
     {
         Stop();
         sessionId = GenerateSessionId();
         cts = new CancellationTokenSource();
         timer = new PeriodicTimer(HeartbeatInterval);
-        loopTask = Task.Run(() => LoopAsync(apiBaseUrl, getLocation, cts.Token));
+        loopTask = Task.Run(() => LoopAsync(apiBaseUrl, getLocationAsync, cts.Token));
     }
 
     public void Stop()
@@ -53,38 +64,70 @@ public sealed class ListenerLocationClient : IDisposable
         timer = null;
     }
 
-    private async Task LoopAsync(string apiBaseUrl, Func<(int territoryId, float x, float z)?> getLocation, CancellationToken token)
+    private async Task LoopAsync(string apiBaseUrl, Func<Task<(int territoryId, float x, float z)?>> getLocationAsync, CancellationToken token)
     {
         var url = $"{apiBaseUrl.TrimEnd('/')}/api/listener-locations/heartbeat";
 
         // Send an immediate heartbeat rather than waiting out the first
         // interval, so the listener appears on the map right away.
-        await SendHeartbeatAsync(url, getLocation, token);
+        await SendHeartbeatAsync(url, getLocationAsync, token);
 
         while (!token.IsCancellationRequested && await timer!.WaitForNextTickAsync(token))
         {
-            await SendHeartbeatAsync(url, getLocation, token);
+            await SendHeartbeatAsync(url, getLocationAsync, token);
         }
     }
 
-    private async Task SendHeartbeatAsync(string url, Func<(int territoryId, float x, float z)?> getLocation, CancellationToken token)
+    private async Task SendHeartbeatAsync(string url, Func<Task<(int territoryId, float x, float z)?>> getLocationAsync, CancellationToken token)
     {
-        if (getLocation() is not { } location)
+        (int territoryId, float x, float z)? location;
+        try
         {
+            // Awaited, not called directly: getLocationAsync marshals onto Dalamud's
+            // framework thread (see Plugin.GetCurrentLocationAsync) since this loop
+            // itself runs on a background Task.Run thread. An unhandled exception here
+            // used to escape into the un-awaited loop task and kill heartbeats for the
+            // rest of the session with nothing logged — hence the try/catch.
+            location = await getLocationAsync();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LastError = ex.Message;
+            Diagnostic?.Invoke($"Skipped: failed to read current location ({ex.Message})");
+            return;
+        }
+
+        if (location is not { } loc)
+        {
+            Diagnostic?.Invoke("Skipped: no local player (between zone loads?)");
             return;
         }
 
         try
         {
-            var payload = new HeartbeatPayload(sessionId, location.territoryId, location.x, location.z);
+            var payload = new HeartbeatPayload(sessionId, loc.territoryId, loc.x, loc.z);
             using var response = await httpClient.PostAsJsonAsync(url, payload, token);
-            // Fire-and-forget: a failed/dropped heartbeat just means the
-            // dot temporarily disappears from the map, not worth surfacing
-            // or retrying aggressively.
+
+            // Fire-and-forget in spirit (a dropped heartbeat just means the dot
+            // temporarily disappears, not worth retrying aggressively), but still
+            // worth surfacing so a persistent failure is visible rather than silent.
+            if (response.IsSuccessStatusCode)
+            {
+                LastError = null;
+                Diagnostic?.Invoke($"Sent: HTTP {(int)response.StatusCode}");
+            }
+            else
+            {
+                LastError = $"HTTP {(int)response.StatusCode}";
+                Diagnostic?.Invoke($"Rejected: HTTP {(int)response.StatusCode}");
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Best-effort; playback and the rest of the plugin don't depend on this.
+            LastError = ex is HttpRequestException httpEx
+                ? $"HTTP {(int?)httpEx.StatusCode}"
+                : ex.Message;
+            Diagnostic?.Invoke($"Failed: {LastError}");
         }
     }
 

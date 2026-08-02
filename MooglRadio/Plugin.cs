@@ -20,6 +20,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly IChatGui chatGui;
     private readonly IClientState clientState;
     private readonly IObjectTable objectTable;
+    private readonly IFramework framework;
     private readonly MainWindow mainWindow;
     private readonly BgmMuter bgmMuter;
 
@@ -49,7 +50,8 @@ public sealed class Plugin : IDalamudPlugin
         ITextureProvider textureProvider,
         IChatGui chatGui,
         IClientState clientState,
-        IObjectTable objectTable)
+        IObjectTable objectTable,
+        IFramework framework)
     {
         this.pluginInterface = pluginInterface;
         this.commandManager = commandManager;
@@ -57,6 +59,7 @@ public sealed class Plugin : IDalamudPlugin
         this.chatGui = chatGui;
         this.clientState = clientState;
         this.objectTable = objectTable;
+        this.framework = framework;
         this.bgmMuter = new BgmMuter(gameConfig, log);
         this.AlbumArtService = new AlbumArtService(textureProvider, log);
 
@@ -116,10 +119,11 @@ public sealed class Plugin : IDalamudPlugin
         {
             if (Configuration.ShareListenerLocation)
             {
-                ListenerLocationClient.Start(Configuration.ApiBaseUrl, GetCurrentLocation);
+                ListenerLocationClient.Start(Configuration.ApiBaseUrl, GetCurrentLocationAsync);
             }
         };
         StreamPlayer.Stopped += ListenerLocationClient.Stop;
+        ListenerLocationClient.Diagnostic += msg => this.log.Info($"MOOGLradio listener-location: {msg}");
 
         NowPlayingClient.Updated += np => AlbumArtService.UpdateFor(Configuration.ApiBaseUrl, np.Track?.ArtUrl);
         NowPlayingClient.Updated += OnNowPlayingUpdated;
@@ -181,7 +185,7 @@ public sealed class Plugin : IDalamudPlugin
 
         if (value)
         {
-            ListenerLocationClient.Start(Configuration.ApiBaseUrl, GetCurrentLocation);
+            ListenerLocationClient.Start(Configuration.ApiBaseUrl, GetCurrentLocationAsync);
         }
         else
         {
@@ -193,16 +197,27 @@ public sealed class Plugin : IDalamudPlugin
     /// no local player to read (e.g. between zone loads). Deliberately raw world coordinates
     /// (<see cref="IGameObject.Position"/>), not the in-game map-pixel readout — the API
     /// converts world space to map space itself. LocalPlayer lives on <see cref="IObjectTable"/>,
-    /// not <see cref="IClientState"/> (which only carries TerritoryType/zone-level state).</summary>
-    private (int territoryId, float x, float z)? GetCurrentLocation()
-    {
-        if (objectTable.LocalPlayer is not { } player)
+    /// not <see cref="IClientState"/> (which only carries TerritoryType/zone-level state).
+    ///
+    /// Marshaled through <see cref="IFramework.Run{T}"/> rather than read directly: this is
+    /// called from <see cref="ListenerLocationClient"/>'s background heartbeat loop
+    /// (<c>Task.Run</c>, not the game's framework/main thread), and Dalamud's game-state
+    /// accessors (IObjectTable/IClientState) are only safe to read from the framework
+    /// thread — reading them from an arbitrary thread pool thread risks a torn read (e.g.
+    /// a Position mid-write) or an outright crash. Without this, an exception thrown here
+    /// would propagate out of the un-awaited heartbeat loop task and kill it silently,
+    /// permanently, with nothing logged — exactly the "isn't reaching the endpoint, no
+    /// error visible" symptom this was fixed for.</summary>
+    private Task<(int territoryId, float x, float z)?> GetCurrentLocationAsync() =>
+        framework.Run(() =>
         {
-            return null;
-        }
+            if (objectTable.LocalPlayer is not { } player)
+            {
+                return ((int territoryId, float x, float z)?)null;
+            }
 
-        return ((int)clientState.TerritoryType, player.Position.X, player.Position.Z);
-    }
+            return ((int)clientState.TerritoryType, player.Position.X, player.Position.Z);
+        });
 
     /// <summary>Prints chat notifications for track/block changes, per <see cref="Configuration.ChatNotifyTrackChange"/>
     /// and <see cref="Configuration.ChatNotifyBlockChange"/>. Compares against the last-notified state rather than
