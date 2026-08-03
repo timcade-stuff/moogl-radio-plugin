@@ -5,9 +5,12 @@ namespace MooglRadio.Services;
 
 /// <summary>
 /// Downloads and caches the current track's cover art as a renderable
-/// ImGui texture. Re-fetches only when the resolved art URL actually
-/// changes (the now-playing poll fires every 15s regardless of whether
-/// the track did). Unverified against a real Dalamud install: whether
+/// ImGui texture. Re-fetches only when the track identity changes (the
+/// now-playing poll fires every 15s regardless of whether the track did).
+/// Dedupes on track identity rather than the resolved art URL because the
+/// now-playing API's ArtUrl is a fixed "currently playing" endpoint, not a
+/// per-track URL — it stays identical across track changes. Unverified
+/// against a real Dalamud install: whether
 /// ITextureProvider.CreateFromImageAsync is safe to call off the main
 /// thread — its doc comment doesn't flag a main-thread requirement
 /// (unlike CreateTextureFromSeString, which explicitly does), but this
@@ -20,13 +23,20 @@ public sealed class AlbumArtService(ITextureProvider textureProvider, IPluginLog
         Timeout = TimeSpan.FromSeconds(10),
         MaxResponseContentBufferSize = 8 * 1024 * 1024, // cover art is a small image; bound worst-case memory use
     };
-    private string? currentUrl;
+    private string? currentTrackKey;
     private IDalamudTextureWrap? currentTexture;
     private CancellationTokenSource? cts;
 
     public IDalamudTextureWrap? Texture => currentTexture;
 
-    public void UpdateFor(string apiBaseUrl, string? artUrl)
+    /// <param name="trackKey">
+    /// Identity of the track this art belongs to (e.g. title+artist+album). The
+    /// now-playing API's ArtUrl is a fixed "currently playing" endpoint rather than
+    /// a per-track URL, so it stays identical across track changes — dedupe on the
+    /// track's identity instead, or every track after the first would keep showing
+    /// stale art forever.
+    /// </param>
+    public void UpdateFor(string apiBaseUrl, string? artUrl, string? trackKey)
     {
         if (artUrl is not null && !IsSameOriginRelativePath(artUrl))
         {
@@ -34,13 +44,13 @@ public sealed class AlbumArtService(ITextureProvider textureProvider, IPluginLog
             artUrl = null;
         }
 
-        var fullUrl = artUrl is null ? null : $"{apiBaseUrl.TrimEnd('/')}{artUrl}";
-        if (fullUrl == currentUrl)
+        if (trackKey == currentTrackKey)
         {
             return;
         }
 
-        currentUrl = fullUrl;
+        currentTrackKey = trackKey;
+        var fullUrl = artUrl is null ? null : $"{apiBaseUrl.TrimEnd('/')}{artUrl}";
         cts?.Cancel();
         currentTexture?.Dispose();
         currentTexture = null;
@@ -61,7 +71,7 @@ public sealed class AlbumArtService(ITextureProvider textureProvider, IPluginLog
             var bytes = await httpClient.GetByteArrayAsync(url, token);
             var wrap = await textureProvider.CreateFromImageAsync(bytes, "MooglRadio album art", token);
 
-            if (token.IsCancellationRequested || url != currentUrl)
+            if (token.IsCancellationRequested)
             {
                 wrap.Dispose();
                 return;

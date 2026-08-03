@@ -1,4 +1,5 @@
 using Dalamud.Game.Command;
+using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
@@ -124,7 +125,7 @@ public sealed class Plugin : IDalamudPlugin
         };
         StreamPlayer.Stopped += ListenerLocationClient.Stop;
 
-        NowPlayingClient.Updated += np => AlbumArtService.UpdateFor(Configuration.ApiBaseUrl, np.Track?.ArtUrl);
+        NowPlayingClient.Updated += np => AlbumArtService.UpdateFor(Configuration.ApiBaseUrl, np.Track?.ArtUrl, TrackKey(np.Track));
         NowPlayingClient.Updated += OnNowPlayingUpdated;
 
         mainWindow = new MainWindow(this);
@@ -228,14 +229,17 @@ public sealed class Plugin : IDalamudPlugin
         hasSeenFirstNowPlaying = true;
 
         var track = nowPlaying.Track;
-        var trackKey = track is null ? null : $"{track.Title} {track.Artist} {track.Album}";
+        var trackKey = TrackKey(track);
 
         if (Configuration.ChatNotifyTrackChange
             && track is not null
             && trackKey != lastNotifiedTrackKey
             && !suppress)
         {
-            chatGui.Print($"MOOGL Radio: {track.Title} by {track.Artist} on {track.Album}");
+            var trackText = track.Album is null
+                ? $"{track.Title} by {track.Artist}"
+                : $"{track.Title} by {track.Artist} on {track.Album}";
+            PrintChat(trackText);
         }
 
         lastNotifiedTrackKey = trackKey;
@@ -246,16 +250,32 @@ public sealed class Plugin : IDalamudPlugin
         {
             if (lastNotifiedBlock is not null)
             {
-                chatGui.Print($"MOOGL Radio: {lastNotifiedBlock} had ended");
+                PrintChat($"{lastNotifiedBlock} had ended");
             }
 
             if (block is not null)
             {
-                chatGui.Print($"MOOGL Radio: {block} has started");
+                PrintChat($"{block} has started");
             }
         }
 
         lastNotifiedBlock = block;
+    }
+
+    /// <summary>Identity key for a track, shared between chat-notification dedup
+    /// and <see cref="AlbumArtService"/>'s re-fetch dedup.</summary>
+    private static string? TrackKey(NowPlayingTrack? track) =>
+        track is null ? null : $"{track.Title} {track.Artist} {track.Album}";
+
+    /// <summary>Prints a chat line with the "MOOGL Radio: " prefix colored to stand
+    /// out from the rest of the (default-colored) message.</summary>
+    private void PrintChat(string message)
+    {
+        var seString = new SeStringBuilder()
+            .AddUiForeground("MOOGL Radio: ", 45)
+            .AddText(message)
+            .Build();
+        chatGui.Print(seString);
     }
 
     private void OnCommand(string command, string args)
